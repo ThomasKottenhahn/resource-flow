@@ -62,4 +62,4 @@ This saves:
 
 ## License
 
-Resource Flow is licensed under and MIT license.
+Resource Flow is licensed under an MIT license.
