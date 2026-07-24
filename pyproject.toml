@@ -12,6 +12,11 @@ dependencies = [
     "lark>=1.0.0"
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+]
+
 [project.scripts]
 rflow = "resource_flow.cli:main"
 
