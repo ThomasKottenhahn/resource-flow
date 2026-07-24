@@ -1,0 +1,4 @@
+mix_batter: 200 g flour *, 300 ml milk *, 2 piece eggs * -> 480 g pancake_batter *;
+fry: 480 g pancake_batter, 20 ml oil * -> 490 g pancakes;
+
+make 500 g pancakes;

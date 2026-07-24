@@ -1,0 +1,26 @@
+program: (statement ";")*
+    ?statement: transition
+                | query
+
+    transition: (label ":")? multiset_expr "->" multiset_expr
+
+    query: (label ":")? "make" multiset_expr
+
+    ?multiset_expr: multiset
+                    | "(" multiset ")"
+
+    multiset: resource ("," resource)*
+
+    resource: NUMBER UNIT NAME BASIC?
+
+    label: IDENTIFIER
+
+    BASIC: "*"
+    UNIT: "g" | "kg" | "ml" | "l" | "piece"
+    NAME: IDENTIFIER (" " IDENTIFIER)*
+
+    IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_]*/
+
+    %import common.WS
+    %import common.NUMBER
+    %ignore WS

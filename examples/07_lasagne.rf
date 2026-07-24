@@ -1,0 +1,9 @@
+make_pasta_dough: 300 g flour *, 3 piece eggs * -> 450 g pasta_dough;
+roll_pasta: 450 g pasta_dough -> 400 g pasta_sheets *;
+
+make_tomato_sauce: 500 g tomatoes *, 50 g onions * -> 450 g tomato_sauce;
+make_meat_sauce: 300 g meat *, 450 g tomato_sauce -> 700 g meat_sauce;
+
+assemble: 400 g pasta_sheets, 700 g meat_sauce -> 1100 g lasagna;
+
+make 1100 g lasagna;

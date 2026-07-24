@@ -1,0 +1,7 @@
+make_dough: 500 g flour *, 300 ml water *, 10 g yeast * -> 800 g dough;
+
+rise: 800 g dough -> 800 g risen_dough;
+
+bake: 780 g risen_dough -> 700 g bread;
+
+make 700 g bread;

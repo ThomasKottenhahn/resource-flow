@@ -1,0 +1,5 @@
+make_sauce: 500 g tomatoes *, 50 g onions *, 20 ml oil * -> 500 g tomato_sauce;
+boil_pasta: 250 g dry_pasta *, 1000 ml water * -> 700 g cooked_pasta;
+combine: 700 g cooked_pasta, 500 g tomato_sauce -> 1100 g tomato_pasta;
+
+make 1100 g tomato_pasta;

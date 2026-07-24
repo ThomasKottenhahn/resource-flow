@@ -1,0 +1,5 @@
+peel: 300 g carrots * -> 280 g peeled_carrots;
+chop: 280 g peeled_carrots -> 270 g chopped_carrots;
+cook: 270 g chopped_carrots, 500 ml water * -> 700 g carrot_soup;
+
+make 700 g carrot_soup;

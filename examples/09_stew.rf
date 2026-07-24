@@ -1,0 +1,11 @@
+chop_vegetables: 500 g carrots *, 300 g potatoes *, 200 g onions * -> 950 g chopped_vegetables;
+
+make_stock: 1000 ml water *, 100 g vegetables * -> 900 ml vegetable_stock;
+
+make_meat_base: 500 g meat *, 50 ml oil * -> 520 g fried_meat;
+
+combine: 950 g chopped_vegetables, 520 g fried_meat, 900 ml vegetable_stock -> 2200 g stew;
+
+reduce: 2200 g stew -> 1800 g thick_stew;
+
+make 1800 g thick_stew;

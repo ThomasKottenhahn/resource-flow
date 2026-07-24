@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resource-flow"
+version = "0.1.0"
+description = "Resource Flow Compiler - compiles resource recipes and resolves DAG scales."
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    "lark>=1.0.0"
+]
+
+[project.scripts]
+rflow = "resource_flow.cli:main"
+
+[tool.setuptools]
+packages = ["resource_flow"]
+
+[tool.setuptools.package-data]
+resource_flow = ["*.lark"]
