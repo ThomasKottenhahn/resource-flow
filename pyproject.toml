@@ -7,9 +7,14 @@ name = "resource-flow"
 version = "0.1.0"
 description = "Resource Flow Compiler - compiles resource recipes and resolves DAG scales."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 dependencies = [
     "lark>=1.0.0"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
 ]
 
 [project.scripts]
