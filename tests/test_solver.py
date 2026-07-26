@@ -121,3 +121,61 @@ def test_solver_mermaid_generation():
     assert "bake" in mermaid_str
     assert "basic_flour" in mermaid_str
     assert "Query" in mermaid_str
+
+
+def test_solver_tag_matching_producer_selection():
+    res_carrots_raw = Resource("carrots", basic=True, tags=frozenset({"organic", "basic"}))
+    res_carrots_conv = Resource("carrots", basic=False)
+    res_carrots_org = Resource("carrots", basic=False, tags=frozenset({"organic", "washed"}))
+
+    proc_conv = Process("grow_conv", set(), {(Quantity(1, "kg"), res_carrots_conv)})
+    proc_org = Process("grow_org", {(Quantity(1, "kg"), res_carrots_raw)}, {(Quantity(1, "kg"), res_carrots_org)})
+
+    req_organic = Resource("carrots", basic=False, tags=frozenset({"organic"}))
+    proc_soup = Process("make_soup", {(Quantity(1, "kg"), req_organic)}, {(Quantity(1, "l"), Resource("soup"))})
+
+    query = Query({(Quantity(1, "l"), Resource("soup"))})
+
+    solver = RecipeSolver({proc_conv, proc_org, proc_soup}, query)
+    dag, basic_reqs = solver.build_dag()
+
+    assert proc_org in dag
+    assert proc_conv not in dag
+    assert basic_reqs == {"carrots"}
+
+
+def test_solver_negated_tag_rejection():
+    res_frozen_carrots = Resource("carrots", basic=False, tags=frozenset({"frozen", "organic"}))
+    proc_freeze = Process("freeze", set(), {(Quantity(1, "kg"), res_frozen_carrots)})
+
+    # Target demands organic carrots but explicitly forbids frozen (!frozen)
+    target_carrots = Resource("carrots", basic=False, tags=frozenset({"organic"}), negated_tags=frozenset({"frozen"}))
+    query = Query({(Quantity(1, "kg"), target_carrots)})
+
+    solver = RecipeSolver({proc_freeze}, query)
+    with pytest.raises(ValueError, match="No process found to produce non-basic resource 'carrots'"):
+        solver.build_dag()
+
+
+def test_solver_tagged_recipe_end_to_end(tmp_path):
+    from resource_flow.parser import RecipeParser
+
+    recipe_content = """
+    prep [cost: 2.00, time: 15 min]: 500 g carrots * [organic, !cut] -> 450 g carrots [organic, cut];
+    cook [cost: 3.50, time: 30 min]: 450 g carrots [organic, cut], 1 l water * -> 1 l carrot_soup [organic];
+    make 2 l carrot_soup [organic];
+    """
+    recipe_file = tmp_path / "tagged_recipe.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+
+    solver = RecipeSolver(processes, query)
+    scales = solver.solve()
+
+    assert scales["cook"] == 2.0
+    assert scales["prep"] == 2.0
+    assert solver.final_demands["carrots"] == Quantity(1000.0, "g")
+    assert solver.final_demands["water"] == Quantity(2.0, "l")
+

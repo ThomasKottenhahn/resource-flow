@@ -18,10 +18,28 @@ class RecipeSolver:
     def is_basic(self, resource_name: str) -> bool:
         return resource_name in self.basic_resource_names
 
-    def find_producer(self, resource_name: str) -> Process | None:
+    def _matches_tags(self, required: Resource, provided: Resource) -> bool:
+        req_tags = required.tags - {"basic"}
+        prov_tags = provided.tags - {"basic"}
+        if not req_tags.issubset(prov_tags):
+            return False
+        if not required.negated_tags.isdisjoint(prov_tags):
+            return False
+        return True
+
+    def find_producer(self, target: Resource | str) -> Process | None:
+        if isinstance(target, str):
+            target_name = target
+            target_res = None
+        else:
+            target_name = target.name
+            target_res = target
+
         for p in self.processes:
-            if any(r.name == resource_name for _, r in p.out):
-                return p
+            for _, out_res in p.out:
+                if out_res.name == target_name:
+                    if target_res is None or self._matches_tags(target_res, out_res):
+                        return p
         return None
 
     def build_dag(self) -> tuple[list[Process], set[str]]:
@@ -35,7 +53,7 @@ class RecipeSolver:
                 basic_requirements.add(res.name)
                 return
 
-            producer = self.find_producer(res.name)
+            producer = self.find_producer(res)
             if producer is not None:
                 visit_process(producer)
             else:

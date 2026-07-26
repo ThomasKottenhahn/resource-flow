@@ -116,3 +116,38 @@ def test_resource_time_tag_forbidden(tmp_path):
         parser.parse_file(str(recipe_file))
 
 
+def test_parser_multiple_positive_and_negated_tags(tmp_path):
+    recipe_content = """
+    prep [cost: 5.00, time: 20 min, automated]: 1 kg apples * [organic, local, !frozen, !sliced] -> 900 g apples [cut, organic, local];
+    make 900 g apples [cut, organic];
+    """
+    recipe_file = tmp_path / "test_multi_tags.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+
+    proc = list(processes)[0]
+    assert proc.name == "prep"
+    assert proc.cost == 5.00
+    assert proc.time == 20.0
+    assert proc.time_unit == "min"
+    assert proc.tags == frozenset({"automated"})
+
+    q_in, r_in = list(proc.inp)[0]
+    assert r_in.name == "apples"
+    assert r_in.basic is True
+    assert r_in.tags == frozenset({"organic", "local", "basic"})
+    assert r_in.negated_tags == frozenset({"frozen", "sliced"})
+
+    q_out, r_out = list(proc.out)[0]
+    assert r_out.name == "apples"
+    assert r_out.tags == frozenset({"cut", "organic", "local"})
+    assert len(r_out.negated_tags) == 0
+
+    q_q, r_q = list(query.query)[0]
+    assert r_q.name == "apples"
+    assert r_q.tags == frozenset({"cut", "organic"})
+
+
+
