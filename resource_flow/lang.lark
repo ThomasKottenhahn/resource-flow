@@ -2,25 +2,37 @@ program: (statement ";")*
     ?statement: transition
                 | query
 
-    transition: (label ":")? multiset_expr "->" multiset_expr
+    transition: proc_header? multiset_expr "->" multiset_expr
 
-    query: (label ":")? "make" multiset_expr
+    proc_header: (label tags? | tags) ":"
+
+    query: (label tags?)? "make" multiset_expr
 
     ?multiset_expr: multiset
                     | "(" multiset ")"
 
     multiset: resource ("," resource)*
 
-    resource: NUMBER UNIT NAME BASIC?
+    resource: NUMBER UNIT NAME BASIC? tags?
 
     label: IDENTIFIER
 
+    tags: "[" tag ("," tag)* "]"
+
+    ?tag: kv_tag
+        | negated_tag
+        | flag_tag
+
+    negated_tag: "!" IDENTIFIER
+    kv_tag: IDENTIFIER ":" NUMBER UNIT?
+    flag_tag: IDENTIFIER
+
     BASIC: "*"
-    UNIT: "g" | "kg" | "ml" | "l" | "piece"
+    UNIT: "g" | "kg" | "ml" | "l" | "piece" | "min" | "s" | "h"
     NAME: IDENTIFIER (" " IDENTIFIER)*
 
     IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_]*/
 
     %import common.WS
     %import common.NUMBER
-    %ignore WS
+    %ignore WS

@@ -1,18 +1,50 @@
 class Resource:
-    def __init__(self, name: str, basic: bool) -> None:
+    def __init__(
+        self,
+        name: str,
+        basic: bool = False,
+        tags: set[str] | frozenset[str] | None = None,
+        negated_tags: set[str] | frozenset[str] | None = None,
+        cost: float = 0.0,
+    ) -> None:
         self.name = name
-        self.basic = basic
+        initial_tags = set(tags) if tags else set()
+        if basic:
+            initial_tags.add("basic")
+        self.tags = frozenset(initial_tags)
+        self.negated_tags = frozenset(negated_tags) if negated_tags else frozenset()
+        self.cost = float(cost)
+
+    @property
+    def basic(self) -> bool:
+        return "basic" in self.tags
 
     def __repr__(self) -> str:
-        return f"{self.name} (basic)" if self.basic else self.name
+        parts = [self.name]
+        if self.basic:
+            parts.append("(basic)")
+        other_tags = [t for t in sorted(self.tags) if t != "basic"]
+        tag_strs = list(other_tags)
+        tag_strs.extend(f"!{t}" for t in sorted(self.negated_tags))
+        if self.cost > 0:
+            tag_strs.append(f"cost: {self.cost:.2f}")
+        if tag_strs:
+            parts.append(f"[{', '.join(tag_strs)}]")
+        return " ".join(parts)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Resource):
             return False
-        return self.name == other.name and self.basic == other.basic
+        return (
+            self.name == other.name
+            and self.tags == other.tags
+            and self.negated_tags == other.negated_tags
+            and self.cost == other.cost
+        )
 
     def __hash__(self) -> int:
-        return hash((self.name, self.basic))
+        return hash((self.name, self.tags, self.negated_tags, self.cost))
+
 
 
 class Quantity:
@@ -45,6 +77,11 @@ class Quantity:
             val_in_ml = self.val * volume_units[self.unit]
             return Quantity(val_in_ml / volume_units[target_unit], target_unit)
 
+        time_units = {"s": 1.0, "min": 60.0, "h": 3600.0}
+        if self.unit in time_units and target_unit in time_units:
+            val_in_s = self.val * time_units[self.unit]
+            return Quantity(val_in_s / time_units[target_unit], target_unit)
+
         raise ValueError(f"Cannot convert unit '{self.unit}' to '{target_unit}'")
 
     def __add__(self, other: "Quantity") -> "Quantity":
@@ -73,13 +110,34 @@ class Quantity:
 
 
 class Process:
-    def __init__(self, name: str, inp: set[tuple[Quantity, Resource]], out: set[tuple[Quantity, Resource]]) -> None:
+    def __init__(
+        self,
+        name: str,
+        inp: set[tuple[Quantity, Resource]],
+        out: set[tuple[Quantity, Resource]],
+        cost: float = 0.0,
+        time: float = 0.0,
+        time_unit: str = "min",
+        tags: set[str] | frozenset[str] | None = None,
+    ) -> None:
         self.name = name
         self.inp = inp
         self.out = out
+        self.cost = float(cost)
+        self.time = float(time)
+        self.time_unit = time_unit
+        self.tags = frozenset(tags) if tags else frozenset()
 
     def __repr__(self) -> str:
-        return f"{self.name}: {self.inp} -> {self.out}"
+        tag_strs = [t for t in sorted(self.tags)]
+        if self.cost > 0:
+            tag_strs.append(f"cost: {self.cost:.2f}")
+        if self.time > 0:
+            tag_strs.append(f"time: {self.time:.2f} {self.time_unit}")
+        metrics_str = f" [{', '.join(tag_strs)}]" if tag_strs else ""
+        return f"{self.name}{metrics_str}: {self.inp} -> {self.out}"
+
+
 
 
 class Query:

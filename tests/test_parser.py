@@ -55,3 +55,64 @@ def test_parser_with_no_labels(tmp_path):
     assert len(processes) == 1
     proc = list(processes)[0]
     assert proc.name == ""  # No label
+
+
+def test_parser_with_tags_and_metrics(tmp_path):
+    recipe_content = """
+    cut_carrots [cost: 1.50, time: 10 min, manual]: 500 g carrots * [cost: 2.00, !cut, organic] -> 450 g carrots [cut, organic];
+    make 450 g carrots [cut];
+    """
+    recipe_file = tmp_path / "test_tags.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+
+    proc = list(processes)[0]
+    assert proc.name == "cut_carrots"
+    assert proc.cost == 1.50
+    assert proc.time == 10.0
+    assert proc.time_unit == "min"
+    assert proc.tags == frozenset({"manual"})
+
+    q_in, r_in = list(proc.inp)[0]
+    assert r_in.name == "carrots"
+    assert r_in.basic is True
+    assert r_in.cost == 2.00
+    assert r_in.tags == frozenset({"organic", "basic"})
+    assert r_in.negated_tags == frozenset({"cut"})
+
+    q_out, r_out = list(proc.out)[0]
+    assert r_out.name == "carrots"
+    assert r_out.tags == frozenset({"cut", "organic"})
+
+
+def test_parser_basic_as_tag(tmp_path):
+    recipe_content = "100 g flour [basic] -> 100 g dough; make 100 g dough;"
+    recipe_file = tmp_path / "test_basic_tag.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+
+    proc = list(processes)[0]
+    q_in, r_in = list(proc.inp)[0]
+    assert r_in.name == "flour"
+    assert r_in.basic is True
+    assert "basic" in r_in.tags
+
+
+
+from lark.exceptions import VisitError
+
+
+def test_resource_time_tag_forbidden(tmp_path):
+    recipe_content = "cut: 100 g A [time: 5 min] -> 100 g B; make 100 g B;"
+    recipe_file = tmp_path / "test_invalid_tag.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    with pytest.raises((ValueError, VisitError), match="Resources cannot have a time tag"):
+        parser.parse_file(str(recipe_file))
+
+
