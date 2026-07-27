@@ -71,6 +71,8 @@ class RecipeSolver:
             producer = self.find_producer(res)
             if producer is not None:
                 visit_process(producer)
+            elif self.is_basic(res.name):
+                basic_requirements.add(res.name)
             else:
                 raise ValueError(
                     f"No process found to produce non-basic resource '{res.name}'"

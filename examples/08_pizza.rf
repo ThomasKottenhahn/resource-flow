@@ -1,13 +1,19 @@
-make_dough: 500 g flour *, 300 ml water *, 10 g yeast * -> 800 g pizza_dough;
+make_dough [time: 10 min]: 
+    500 g flour * [cost: 1.19], 300 ml water *, 10 g yeast * [cost: 0.19] 
+    -> 800 g pizza_dough;
 
-buy_dough: 800 g pizza_dough * -> 800 g pizza_dough;
+make_tomato_sauce [time: 20 min]: 
+    300 g tomatoes * [cost: 2.00], 20 ml oil * [cost: 0.02] 
+    -> 280 g pizza_sauce;
 
-make_tomato_sauce: 300 g tomatoes *, 20 ml oil * -> 280 g pizza_sauce;
+slice_cheese [time: 5 min]: 
+    200 g cheese * 
+    -> 190 g grated_cheese;
 
-slice_cheese: 200 g cheese * -> 190 g grated_cheese;
+assemble: 
+    800 g pizza_dough, 280 g pizza_sauce, 190 g grated_cheese 
+    -> 1200 g pizza;
 
-assemble: 800 g pizza_dough, 280 g pizza_sauce, 190 g grated_cheese -> 1200 g pizza;
+bake: 1200 g pizza -> 1150 g pizza [baked];
 
-bake: 1200 g pizza -> 1150 g baked_pizza;
-
-make 1150 g baked_pizza;
+make 1150 g pizza [baked];

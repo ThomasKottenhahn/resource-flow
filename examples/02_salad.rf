@@ -1,3 +1,3 @@
-wash: 200 g lettuce *, 100 g tomatoes * -> 290 g salad;
+prep [cost: 1.00, time: 10 min]: 200 g lettuce * [cost: 1.50], 100 g tomatoes * [cost: 1.00] -> 290 g salad;
 
-make 290 g salad;
+make 500 g salad;

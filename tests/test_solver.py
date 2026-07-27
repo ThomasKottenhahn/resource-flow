@@ -45,6 +45,29 @@ def test_solver_basic_detection_and_dag():
     assert basic_reqs == {"flour", "water"}
 
 
+def test_solver_globally_valid_basic_resource():
+    cheese_basic = Resource("cheese", basic=True, cost=0.02)
+    pasta_sheets = Resource("pasta_sheets", basic=True)
+    lasagna = Resource("lasagna", basic=False)
+
+    assemble = Process(
+        "assemble",
+        {(Quantity(100, "g"), cheese_basic), (Quantity(400, "g"), pasta_sheets)},
+        {(Quantity(1000, "g"), lasagna)},
+    )
+
+    # Query cheese without specifying basic=True in the query Resource
+    cheese_query = Resource("cheese", basic=False)
+    query = Query({(Quantity(900, "g"), lasagna), (Quantity(200, "g"), cheese_query)})
+
+    solver = RecipeSolver({assemble}, query)
+    assert solver.is_basic("cheese") is True
+    processes_in_dag, basic_reqs = solver.build_dag()
+    assert "cheese" in basic_reqs
+    scales = solver.solve()
+    assert solver.final_demands["cheese"] == Quantity(290, "g")
+
+
 def test_solver_cycle_detection():
     # A -> B -> A (cyclic)
     res_a = Resource("A", basic=False)
