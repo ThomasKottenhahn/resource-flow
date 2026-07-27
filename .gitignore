@@ -225,5 +225,5 @@ output_dir/
 AGENTS.md
 graphify-out/
 skills-lock.json
-docs/
+docs/agents
 CONTEXT.md

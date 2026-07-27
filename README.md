@@ -1,6 +1,8 @@
 # Resource Flow
 
-Resource Flow is a domain-specific language for moddeling processes. The idea is to make processes as small as possible and by quering for an end product the language will calculate the required input products and steps to take to make the end product.
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://ThomasKottenhahn.github.io/resource-flow/)
+
+Resource Flow is a domain-specific language for modeling processes. The idea is to make processes as small as possible and by querying for an end product the language will calculate the required input products and steps to take to make the end product.
 
 ## Features
 - **DAG Solver**: Scales input dependencies backwards from queries to sources.

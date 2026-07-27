@@ -1,0 +1,49 @@
+site_name: Resource Flow
+site_description: Domain-specific language (DSL) for process modeling, DAG scaling, and unit conversions.
+site_url: https://ThomasKottenhahn.github.io/resource-flow/
+repo_url: https://github.com/ThomasKottenhahn/resource-flow
+repo_name: ThomasKottenhahn/resource-flow
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Language Guide: language-guide.md
+  - CLI Reference: cli-reference.md
+  - Examples: examples.md
