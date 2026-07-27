@@ -6,6 +6,7 @@ class Resource:
         tags: set[str] | frozenset[str] | None = None,
         negated_tags: set[str] | frozenset[str] | None = None,
         cost: float = 0.0,
+        cost_unit: str | None = None,
     ) -> None:
         self.name = name
         initial_tags = set(tags) if tags else set()
@@ -14,6 +15,12 @@ class Resource:
         self.tags = frozenset(initial_tags)
         self.negated_tags = frozenset(negated_tags) if negated_tags else frozenset()
         self.cost = float(cost)
+        self.cost_unit = cost_unit
+
+        if self.cost > 0 and not self.basic:
+            raise ValueError(
+                f"Cost can only be specified on basic resources, but '{self.name}' is not basic"
+            )
 
     @property
     def basic(self) -> bool:
@@ -27,7 +34,10 @@ class Resource:
         tag_strs = list(other_tags)
         tag_strs.extend(f"!{t}" for t in sorted(self.negated_tags))
         if self.cost > 0:
-            tag_strs.append(f"cost: {self.cost:.2f}")
+            if self.cost_unit:
+                tag_strs.append(f"cost: {self.cost:.4f}/{self.cost_unit}")
+            else:
+                tag_strs.append(f"cost: {self.cost:.2f}")
         if tag_strs:
             parts.append(f"[{', '.join(tag_strs)}]")
         return " ".join(parts)
@@ -40,10 +50,13 @@ class Resource:
             and self.tags == other.tags
             and self.negated_tags == other.negated_tags
             and self.cost == other.cost
+            and self.cost_unit == other.cost_unit
         )
 
     def __hash__(self) -> int:
-        return hash((self.name, self.tags, self.negated_tags, self.cost))
+        return hash(
+            (self.name, self.tags, self.negated_tags, self.cost, self.cost_unit)
+        )
 
 
 
@@ -83,6 +96,21 @@ class Quantity:
             return Quantity(val_in_s / time_units[target_unit], target_unit)
 
         raise ValueError(f"Cannot convert unit '{self.unit}' to '{target_unit}'")
+
+    def to_base_unit(self) -> "Quantity":
+        weight_units = {"g": "g", "kg": "g"}
+        if self.unit in weight_units:
+            return self.convert_to("g")
+
+        volume_units = {"ml": "ml", "l": "ml"}
+        if self.unit in volume_units:
+            return self.convert_to("ml")
+
+        time_units = {"s": "s", "min": "s", "h": "s"}
+        if self.unit in time_units:
+            return self.convert_to("s")
+
+        return Quantity(self.val, self.unit)
 
     def __add__(self, other: "Quantity") -> "Quantity":
         try:

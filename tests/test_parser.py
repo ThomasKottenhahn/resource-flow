@@ -78,7 +78,8 @@ def test_parser_with_tags_and_metrics(tmp_path):
     q_in, r_in = list(proc.inp)[0]
     assert r_in.name == "carrots"
     assert r_in.basic is True
-    assert r_in.cost == 2.00
+    assert r_in.cost == pytest.approx(2.00 / 500.0)
+    assert r_in.cost_unit == "g"
     assert r_in.tags == frozenset({"organic", "basic"})
     assert r_in.negated_tags == frozenset({"cut"})
 
@@ -148,6 +149,34 @@ def test_parser_multiple_positive_and_negated_tags(tmp_path):
     q_q, r_q = list(query.query)[0]
     assert r_q.name == "apples"
     assert r_q.tags == frozenset({"cut", "organic"})
+
+
+def test_batch_cost_normalization_parsing(tmp_path):
+    recipe_content = "prep: 300 g carrots * [cost: 20.00] -> 280 g peeled_carrots; make 280 g peeled_carrots;"
+    recipe_file = tmp_path / "test_batch_cost.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+
+    proc = list(processes)[0]
+    q_in, r_in = list(proc.inp)[0]
+    assert r_in.name == "carrots"
+    assert r_in.basic is True
+    # 20.00 for 300g = 0.06666... per g
+    assert r_in.cost == pytest.approx(20.00 / 300.0)
+    assert r_in.cost_unit == "g"
+
+
+def test_non_basic_resource_cost_forbidden(tmp_path):
+    recipe_content = "prep: 300 g carrots [cost: 20.00] -> 280 g peeled_carrots; make 280 g peeled_carrots;"
+    recipe_file = tmp_path / "test_non_basic_cost.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    with pytest.raises((ValueError, VisitError), match="Cost can only be specified on basic resources"):
+        parser.parse_file(str(recipe_file))
+
 
 
 

@@ -56,8 +56,26 @@ class RecipeTransformer(Transformer):
         if is_basic:
             tags.add("basic")
 
-        return Quantity(val, unit), Resource(
-            name, basic=is_basic, tags=tags, negated_tags=negated_tags, cost=cost
+        qty = Quantity(val, unit)
+        unit_cost = 0.0
+        cost_unit = None
+
+        if cost > 0:
+            if not is_basic:
+                raise ValueError(
+                    f"Cost can only be specified on basic resources, but '{name}' is not basic"
+                )
+            base_qty = qty.to_base_unit()
+            unit_cost = cost / base_qty.val
+            cost_unit = base_qty.unit
+
+        return qty, Resource(
+            name,
+            basic=is_basic,
+            tags=tags,
+            negated_tags=negated_tags,
+            cost=unit_cost,
+            cost_unit=cost_unit,
         )
 
     def multiset(self, items):

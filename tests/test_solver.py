@@ -179,3 +179,194 @@ def test_solver_tagged_recipe_end_to_end(tmp_path):
     assert solver.final_demands["carrots"] == Quantity(1000.0, "g")
     assert solver.final_demands["water"] == Quantity(2.0, "l")
 
+
+def test_solver_metric_aggregation():
+    res_carrots = Resource("carrots", basic=True, cost=0.50)
+    res_water = Resource("water", basic=True, cost=0.02)
+    res_chopped = Resource("chopped_carrots", basic=False)
+    res_soup = Resource("soup", basic=False)
+
+    p_prep = Process(
+        "prep",
+        {(Quantity(500, "g"), res_carrots)},
+        {(Quantity(450, "g"), res_chopped)},
+        cost=1.50,
+        time=10.0,
+        time_unit="min",
+    )
+    p_cook = Process(
+        "cook",
+        {(Quantity(450, "g"), res_chopped), (Quantity(1000, "ml"), res_water)},
+        {(Quantity(1, "l"), res_soup)},
+        cost=4.00,
+        time=0.5,
+        time_unit="h",  # 30 min
+    )
+
+    query = Query({(Quantity(2, "l"), res_soup)})
+
+    solver = RecipeSolver({p_prep, p_cook}, query)
+    scales = solver.solve()
+
+    # Scale factor for both processes is 2.0
+    assert scales["cook"] == 2.0
+    assert scales["prep"] == 2.0
+
+    # Demands: 1000g carrots @ 0.50 = 500.0, 2l (2000ml) water @ 0.02 = 40.0
+    # Total resource cost = 540.0
+    res_cost = solver.calculate_resource_costs()
+    assert res_cost == pytest.approx(540.0)
+
+    # Process costs: prep = 1.50 * 2 = 3.0, cook = 4.00 * 2 = 8.0 -> Total = 11.0
+    proc_cost = solver.calculate_process_costs(scales)
+    assert proc_cost == pytest.approx(11.0)
+
+    # Process time: prep = 10 min * 2 = 20 min; cook = 0.5 h (30 min) * 2 = 60 min -> Total = 80 min
+    proc_time_min = solver.calculate_process_time(scales, target_unit="min")
+    assert proc_time_min == pytest.approx(80.0)
+
+    # Get metrics dict
+    metrics = solver.get_metrics(scales, time_unit="min")
+    assert metrics["resource_cost"] == pytest.approx(540.0)
+    assert metrics["process_cost"] == pytest.approx(11.0)
+    assert metrics["total_cost"] == pytest.approx(551.0)
+    assert metrics["total_time"] == pytest.approx(80.0)
+
+
+def test_solver_batch_cost_unit_conversion(tmp_path):
+    from resource_flow.parser import RecipeParser
+
+    recipe_content = """
+    peel: 300 g carrots * [cost: 20.00] -> 250 g peeled_carrots;
+    make 1.5 kg peeled_carrots;
+    """
+    recipe_file = tmp_path / "batch_cost.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+
+    solver = RecipeSolver(processes, query)
+    scales = solver.solve()
+
+    assert scales["peel"] == 6.0
+    # Demanded carrots: 6.0 * 300g = 1800g = 1.8 kg
+    # Cost: 1800g * (20.00 / 300g) = 120.00
+    res_cost = solver.calculate_resource_costs()
+    assert res_cost == pytest.approx(120.00)
+
+
+def test_solver_dimension_mismatch_error():
+    res_carrots = Resource("carrots", basic=True, cost=0.05, cost_unit="g")
+    p_peel = Process(
+        "peel",
+        {(Quantity(100, "ml"), res_carrots)},  # Invalid: ml used for resource with cost in g
+        {(Quantity(100, "g"), Resource("peeled_carrots", basic=False))},
+    )
+    query = Query({(Quantity(100, "g"), Resource("peeled_carrots"))})
+
+    solver = RecipeSolver({p_peel}, query)
+    solver.solve()
+
+    with pytest.raises(ValueError, match="Cannot convert unit"):
+        solver.calculate_resource_costs()
+
+
+def test_solver_print_plan_formatting(capsys):
+    res_carrots = Resource("carrots", basic=True, tags={"organic"}, negated_tags={"frozen"}, cost=0.02, cost_unit="g")
+    res_chopped = Resource("chopped_carrots", basic=False, tags={"organic", "cut"})
+    res_soup = Resource("soup", basic=False, tags={"organic"})
+
+    p_prep = Process(
+        "prep",
+        {(Quantity(500, "g"), res_carrots)},
+        {(Quantity(450, "g"), res_chopped)},
+        cost=1.50,
+        time=10.0,
+        time_unit="min",
+        tags={"manual"},
+    )
+    p_cook = Process(
+        "cook",
+        {(Quantity(450, "g"), res_chopped)},
+        {(Quantity(1, "l"), res_soup)},
+        cost=4.00,
+        time=0.5,
+        time_unit="h",
+    )
+
+    query = Query({(Quantity(2, "l"), res_soup)})
+    solver = RecipeSolver({p_prep, p_cook}, query)
+    scales = solver.solve()
+
+    solver.print_plan(scales, time_unit="min")
+    captured = capsys.readouterr().out
+
+    # Step headers format
+    assert "Step 1: prep (Scale: 2.0000, Cost: 3.00, Time: 20.00 min) [manual]" in captured
+    assert "Step 2: cook (Scale: 2.0000, Cost: 8.00, Time: 1.00 h)" in captured
+
+    # Tag formatting on inputs and outputs
+    assert "- 1000.00 g carrots * [organic, !frozen]" in captured
+    assert "- 900.00 g chopped_carrots [cut, organic]" in captured
+
+    # Basic resource cost formatting
+    assert "- 1000.00 g carrots [organic, !frozen] (Cost: 20.00)" in captured
+
+    # Metrics Summary
+    assert "=== METRICS SUMMARY ===" in captured
+    assert "Resource Cost: 20.00" in captured
+    assert "Process Cost:  11.00" in captured
+    assert "Total Cost:    31.00" in captured
+    assert "Total Time:    80.00 min" in captured
+
+
+def test_solver_generate_mermaid_reporting():
+    res_carrots = Resource("carrots", basic=True, tags={"organic"}, cost=0.02, cost_unit="g")
+    res_chopped = Resource("chopped_carrots", basic=False, tags={"organic", "cut"})
+    res_soup = Resource("soup", basic=False, tags={"organic"})
+
+    p_prep = Process(
+        "prep",
+        {(Quantity(500, "g"), res_carrots)},
+        {(Quantity(450, "g"), res_chopped)},
+        cost=1.50,
+        time=10.0,
+        time_unit="min",
+        tags={"manual"},
+    )
+    p_cook = Process(
+        "cook",
+        {(Quantity(450, "g"), res_chopped)},
+        {(Quantity(1, "l"), res_soup)},
+        cost=4.00,
+        time=0.5,
+        time_unit="h",
+    )
+
+    query = Query({(Quantity(2, "l"), res_soup)})
+    solver = RecipeSolver({p_prep, p_cook}, query)
+    scales = solver.solve()
+
+    mermaid_str = solver.generate_mermaid(scales, time_unit="min")
+
+    # Process nodes with cost, time, and tags
+    assert 'prep["prep (x2.00)\\nCost: 3.00, Time: 20.00 min\\n[manual]"]' in mermaid_str
+    assert 'cook["cook (x2.00)\\nCost: 8.00, Time: 1.00 h"]' in mermaid_str
+
+    # Basic resource node with tags and cost
+    assert 'basic_carrots["carrots* [organic] (1000.00 g, Cost: 20.00)"]' in mermaid_str
+
+    # Edge labels with resource tags
+    assert 'basic_carrots -->|"1000.00 g [organic]"| prep' in mermaid_str
+    assert 'prep -->|"900.00 g chopped_carrots [cut, organic]"| cook' in mermaid_str
+
+    # Query node with tags
+    assert 'Query["Query: 2.00 l soup [organic]"]' in mermaid_str
+
+    # Metrics node
+    assert 'Metrics["Metrics Summary\\nResource Cost: 20.00\\nProcess Cost: 11.00\\nTotal Cost: 31.00\\nTotal Time: 80.00 min"]' in mermaid_str
+
+
+
+

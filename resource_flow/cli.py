@@ -17,6 +17,12 @@ def main() -> None:
         "--output",
         help="Optional directory path or filename prefix. If omitted, outputs print to console.",
     )
+    parser.add_argument(
+        "--time-unit",
+        default="min",
+        choices=["s", "min", "h"],
+        help="Time unit for execution metrics summary (default: min).",
+    )
     args = parser.parse_args()
 
     try:
@@ -25,12 +31,12 @@ def main() -> None:
 
         solver = RecipeSolver(processes, query)
         scales = solver.solve()
-        mermaid_text = solver.generate_mermaid(scales)
+        mermaid_text = solver.generate_mermaid(scales, time_unit=args.time_unit)
 
         if args.output:
             plan_stream = io.StringIO()
             with redirect_stdout(plan_stream):
-                solver.print_plan(scales)
+                solver.print_plan(scales, time_unit=args.time_unit)
             plan_text = plan_stream.getvalue()
 
             output_path = Path(args.output)
@@ -58,7 +64,7 @@ def main() -> None:
             print("\n------------------------------------------------")
             print("Solving Recipe...")
             print("------------------------------------------------")
-            solver.print_plan(scales)
+            solver.print_plan(scales, time_unit=args.time_unit)
             print("Mermaid Visualization:")
             print(mermaid_text)
             print("------------------------------------------------\n")
