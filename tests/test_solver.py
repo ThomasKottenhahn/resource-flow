@@ -381,7 +381,7 @@ def test_solver_generate_mermaid_reporting():
     assert 'basic_carrots["carrots* [organic] (1000.00 g, Cost: 20.00)"]' in mermaid_str
 
     # Edge labels with resource tags
-    assert 'basic_carrots -->|"1000.00 g [organic]"| prep' in mermaid_str
+    assert 'basic_carrots -->|"1000.00 g carrots [organic]"| prep' in mermaid_str
     assert 'prep -->|"900.00 g chopped_carrots [cut, organic]"| cook' in mermaid_str
 
     # Query node with tags
@@ -389,6 +389,46 @@ def test_solver_generate_mermaid_reporting():
 
     # Metrics node
     assert 'Metrics["Metrics Summary\\nResource Cost: 20.00\\nProcess Cost: 11.00\\nTotal Cost: 31.00\\nTotal Time: 80.00 min"]' in mermaid_str
+
+
+def test_solver_tagged_resource_and_multi_query_graph_edges(tmp_path):
+    from resource_flow.parser import RecipeParser
+
+    recipe_content = """
+    cut_onions [time: 5 min]: 50 g onions * [cost: 0.20] -> 50 g onions [cut];
+    make_tomato_sauce [time: 20 min]: 500 g tomatoes * [cost: 2.00], 50 g onions [cut] -> 450 g tomato_sauce;
+    assemble [time: 15 min]: 600 g tomato_sauce, 100 g cheese * [cost: 2.00] -> 1000 g lasagna;
+    bake [time: 45 min]: 1000 g lasagna -> 900 g lasagna [baked];
+
+    make 900 g lasagna [baked];
+    make 200 g cheese;
+    """
+    recipe_file = tmp_path / "lasagne_subset.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    _, processes, query = parser.parse_file(str(recipe_file))
+
+    solver = RecipeSolver(processes, query)
+    scales = solver.solve()
+    mermaid_str = solver.generate_mermaid(scales)
+
+    # Edge from plain onions to cut_onions
+    assert 'basic_onions -->|"66.67 g onions"| cut_onions' in mermaid_str
+    # Edge from cut_onions to make_tomato_sauce with cut tag
+    assert 'cut_onions -->|"66.67 g onions [cut]"| make_tomato_sauce' in mermaid_str
+    # basic_onions should NOT connect directly to make_tomato_sauce
+    assert 'basic_onions -->|"66.67 g onions [cut]"| make_tomato_sauce' not in mermaid_str
+
+    # Cheese outgoing edges: 100g to assemble, 200g to Query
+    assert 'basic_cheese -->|"100.00 g cheese"| assemble' in mermaid_str
+    assert 'basic_cheese -->|"200.00 g cheese"| Query' in mermaid_str
+
+    # lasagna (raw) from assemble should NOT connect to Query (which asks for lasagna [baked])
+    assert 'assemble -->|"1000.00 g lasagna"| Query' not in mermaid_str
+    # bake output should connect to Query
+    assert 'bake -->|"900.00 g lasagna [baked]"| Query' in mermaid_str
+
 
 
 

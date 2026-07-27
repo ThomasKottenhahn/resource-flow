@@ -189,7 +189,12 @@ class RecipeSolver:
             print("  Inputs:")
             for qty, res in proc.inp:
                 scaled_qty = qty * scale
-                is_basic_str = " *" if self.is_basic(res.name) or res.basic else ""
+                producer = self.find_producer(res) if not res.basic else None
+                is_basic_str = (
+                    " *"
+                    if (res.basic or producer is None or producer not in processes_in_dag)
+                    else ""
+                )
                 res_tags_str = self._format_resource_tags(res)
                 print(
                     f"    - {scaled_qty.val:.2f} {scaled_qty.unit} {res.name}{is_basic_str}{res_tags_str}"
@@ -277,7 +282,7 @@ class RecipeSolver:
                 lines.append(f'    basic_{name}["{name}*{res_tags_str}"]')
 
         query_targets = []
-        for qty, res in self.query.query:
+        for qty, res in sorted(self.query.query, key=lambda item: item[1].name):
             res_tags_str = self._format_resource_tags(res)
             query_targets.append(f"{qty.val:.2f} {qty.unit} {res.name}{res_tags_str}")
         lines.append(f'    Query["Query: {", ".join(query_targets)}"]')
@@ -287,24 +292,34 @@ class RecipeSolver:
             for qty_in, res_in in proc.inp:
                 scaled_qty = qty_in * scale
                 res_tags_str = self._format_resource_tags(res_in)
-                if self.is_basic(res_in.name):
+                producer = self.find_producer(res_in) if not res_in.basic else None
+                if producer is not None and producer in processes_in_dag:
                     lines.append(
-                        f'    basic_{res_in.name} -->|"{scaled_qty.val:.2f} {scaled_qty.unit}{res_tags_str}"| {proc.name}'
+                        f'    {producer.name} -->|"{scaled_qty.val:.2f} {scaled_qty.unit} {res_in.name}{res_tags_str}"| {proc.name}'
                     )
                 else:
-                    producer = self.find_producer(res_in) or self.find_producer(res_in.name)
-                    if producer:
-                        lines.append(
-                            f'    {producer.name} -->|"{scaled_qty.val:.2f} {scaled_qty.unit} {res_in.name}{res_tags_str}"| {proc.name}'
-                        )
+                    lines.append(
+                        f'    basic_{res_in.name} -->|"{scaled_qty.val:.2f} {scaled_qty.unit} {res_in.name}{res_tags_str}"| {proc.name}'
+                    )
 
             for qty_out, res_out in proc.out:
-                if any(res_out.name == q_res.name for _, q_res in self.query.query):
+                if any(
+                    res_out.name == q_res.name and self._matches_tags(q_res, res_out)
+                    for _, q_res in self.query.query
+                ):
                     scaled_qty = qty_out * scale
                     res_tags_str = self._format_resource_tags(res_out)
                     lines.append(
                         f'    {proc.name} -->|"{scaled_qty.val:.2f} {scaled_qty.unit} {res_out.name}{res_tags_str}"| Query'
                     )
+
+        for q_qty, q_res in sorted(self.query.query, key=lambda item: item[1].name):
+            producer = self.find_producer(q_res) if not q_res.basic else None
+            if producer is None or producer not in processes_in_dag:
+                res_tags_str = self._format_resource_tags(q_res)
+                lines.append(
+                    f'    basic_{q_res.name} -->|"{q_qty.val:.2f} {q_qty.unit} {q_res.name}{res_tags_str}"| Query'
+                )
 
         metrics = self.get_metrics(process_scales, time_unit=time_unit)
         metrics_label = (
