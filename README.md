@@ -55,7 +55,6 @@ This saves:
 
 ## Roadmap
 
-- **Tags**: Tag Resources and processes with costs, time and custom tags.
 - **Different solver goals**: Solve for the cheapest or fastest recipe.
 - **Tools**: Define tools used in processes and solve with a set of available tools.
 - **Modules**: Organize code into different modules and solve queries with processes from other modules.
