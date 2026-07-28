@@ -1,5 +1,13 @@
-make_sauce: 500 g tomatoes *, 50 g onions *, 20 ml oil * -> 500 g tomato_sauce;
-boil_pasta: 250 g dry_pasta *, 1000 ml water * -> 700 g cooked_pasta;
-combine: 700 g cooked_pasta, 500 g tomato_sauce -> 1100 g tomato_pasta;
+make_sauce [time: 15 min]: 
+    250 g tomatoes * [cost: 3.00], 25 g onions * [cost: 0.50], 10 ml oil * [cost: 0.02] 
+    -> 250 g tomato_sauce;
+
+boil_pasta [time: 10 min]: 
+    250 g dry_pasta * [cost: 1.50], 1000 ml water * [cost: 0.00] 
+    -> 350 g cooked_pasta;
+
+combine [time: 5 min]: 
+    700 g cooked_pasta, 500 g tomato_sauce 
+    -> 1100 g tomato_pasta;
 
 make 1100 g tomato_pasta;

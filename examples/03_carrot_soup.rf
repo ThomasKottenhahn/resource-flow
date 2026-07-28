@@ -1,5 +1,5 @@
-peel: 300 g carrots * -> 280 g peeled_carrots;
-chop: 280 g peeled_carrots -> 270 g chopped_carrots;
-cook: 270 g chopped_carrots, 500 ml water * -> 700 g carrot_soup;
+peel [cost: 1.00, time: 5 min]: 300 g carrots * [cost: 2.00] -> 280 g peeled_carrots;
+chop [cost: 1.00, time: 5 min]: 280 g peeled_carrots -> 270 g chopped_carrots;
+cook [cost: 2.00, time: 15 min]: 270 g chopped_carrots, 500 ml water * [cost: 0.50] -> 700 g carrot_soup;
 
 make 700 g carrot_soup;

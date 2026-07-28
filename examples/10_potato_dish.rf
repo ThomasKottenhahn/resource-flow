@@ -1,15 +1,29 @@
-make_stock: 1000 ml water *, 200 g vegetables * -> 850 ml vegetable_stock *;
+make_stock [time: 60 min]: 
+    1000 ml water *, 200 g vegetables * [cost: 2.00] 
+    -> 850 ml vegetable_stock *;
 
-peel: 500 g potatoes * -> 450 g peeled_potatoes;
+peel [time: 5 min]: 
+    500 g potatoes * [cost: 1.00]
+    -> 450 g potatoes [peeled];
 
-boil: 450 g peeled_potatoes, 500 ml vegetable_stock * -> 800 g boiled_potatoes;
+boil [time: 20 min]: 
+    450 g potatoes [peeled], 500 ml vegetable_stock * 
+    -> 800 g potatoes [boiled];
 
-fry: 500 g potatoes *, 50 ml oil * -> 450 g fried_potatoes;
+fry [time: 15 min]: 
+    500 g potatoes *, 50 ml oil * 
+    -> 450 g potatoes [fried];
 
-mash: 800 g boiled_potatoes, 100 g butter * -> 850 g mashed_potatoes;
+mash [time: 10 min]: 
+    800 g potatoes [boiled], 100 g butter * 
+    -> 850 g potatoes [mashed];
 
-combine_a: 850 g mashed_potatoes, 450 g fried_potatoes -> 1200 g potato_dish;
+combine [time: 5 min]: 
+    850 g potatoes [mashed], 450 g potatoes [fried] 
+    -> 1200 g potato_dish;
 
-combine_b: 850 g mashed_potatoes, 300 g vegetables * -> 1100 g potato_dish;
+combine [time: 5 min]: 
+    850 g potatoes [mashed], 300 g vegetables * 
+    -> 1100 g potato_dish;
 
 make 1200 g potato_dish;

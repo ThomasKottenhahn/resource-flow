@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "resource-flow"
-version = "0.1.0"
+version = "0.1.1"
 description = "Resource Flow Compiler - compiles resource recipes and resolves DAG scales."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,6 +15,10 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest>=7.0.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
 ]
 
 [project.scripts]

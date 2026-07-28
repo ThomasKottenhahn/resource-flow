@@ -220,3 +220,10 @@ __marimo__/
 # Custom
 
 output_dir/
+.scratch/
+.agents/
+AGENTS.md
+graphify-out/
+skills-lock.json
+docs/agents
+CONTEXT.md
