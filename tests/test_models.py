@@ -17,6 +17,16 @@ def test_resource_basics():
     assert repr(r3) == "eggs"
 
 
+def test_resource_calculate_cost():
+    r_no_cost = Resource("water", basic=True)
+    assert r_no_cost.calculate_cost(Quantity(100, "l")) == 0.0
+
+    r_cost = Resource("flour", basic=True, cost=0.002, cost_unit="g")
+    assert r_cost.calculate_cost(Quantity(500, "g")) == 1.0
+    assert r_cost.calculate_cost(Quantity(1.5, "kg")) == 3.0
+
+
+
 def test_quantity_basics():
     q = Quantity(2.5, "kg")
     assert repr(q) == "2.5 kg"

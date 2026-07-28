@@ -114,9 +114,9 @@ class RecipeSolver:
                 if res_out.name in demands:
                     demand_qty = demands[res_out.name]
                     converted_demand = demand_qty.convert_to(qty_out.unit)
-                    s = converted_demand.val / qty_out.val
-                    if s > scale_factor:
-                        scale_factor = s
+                    scale = converted_demand.val / qty_out.val
+                    if scale > scale_factor:
+                        scale_factor = scale
 
             process_scales[proc.name] = scale_factor
 
@@ -226,10 +226,7 @@ class RecipeSolver:
             res_tags_str = self._format_resource_tags(res)
             cost_str = ""
             if res and res.cost > 0:
-                if res.cost_unit:
-                    cost_val = qty.convert_to(res.cost_unit).val * res.cost
-                else:
-                    cost_val = qty.val * res.cost
+                cost_val = res.calculate_cost(qty)
                 cost_str = f" (Cost: {cost_val:.2f})"
             print(f"- {qty.val:.2f} {qty.unit} {name}{res_tags_str}{cost_str}")
         print("======================================\n")
@@ -270,11 +267,8 @@ class RecipeSolver:
                 qty = self.final_demands[name]
                 cost_str = ""
                 if res and res.cost > 0:
-                    if res.cost_unit:
-                        c_val = qty.convert_to(res.cost_unit).val * res.cost
-                    else:
-                        c_val = qty.val * res.cost
-                    cost_str = f", Cost: {c_val:.2f}"
+                    cost_val = res.calculate_cost(qty)
+                    cost_str = f", Cost: {cost_val:.2f}"
                 lines.append(
                     f'    basic_{name}["{name}*{res_tags_str} ({qty.val:.2f} {qty.unit}{cost_str})"]'
                 )
@@ -338,12 +332,8 @@ class RecipeSolver:
         total = 0.0
         for name, qty in self.final_demands.items():
             res = self.basic_resources.get(name)
-            if res and res.cost > 0:
-                if res.cost_unit:
-                    converted_qty = qty.convert_to(res.cost_unit)
-                    total += converted_qty.val * res.cost
-                else:
-                    total += qty.val * res.cost
+            if res:
+                total += res.calculate_cost(qty)
         return total
 
     def calculate_process_costs(self, process_scales: dict[str, float]) -> float:

@@ -26,6 +26,13 @@ class Resource:
     def basic(self) -> bool:
         return "basic" in self.tags
 
+    def calculate_cost(self, qty: "Quantity") -> float:
+        if self.cost <= 0:
+            return 0.0
+        if self.cost_unit:
+            return qty.convert_to(self.cost_unit).val * self.cost
+        return qty.val * self.cost
+
     def __repr__(self) -> str:
         parts = [self.name]
         if self.basic:
