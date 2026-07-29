@@ -92,11 +92,21 @@ Unit conversions across compatible dimensions occur automatically:
 
 ---
 
-## Make Queries
+## Make Queries and Solver Goals
 
-The `make` query specifies the end product demand:
+The `make` query specifies the end product demand. You can attach solver goals in brackets before `make` to control how alternative process routes are selected:
 
 ```text
 make 1100 g tomato_pasta;
-make 300g salad;
+
+[cheapest] make 1100 g tomato_pasta;
+[fastest] make 1100 g tomato_pasta;
+[cheapest, fastest] make 1100 g tomato_pasta;
 ```
+
+### Supported Solver Goals
+- **`[cheapest]`**: Minimizes total cost (`resource_cost` + `process_cost`).
+- **`[fastest]`**: Minimizes total process execution duration.
+- **`[any]`**: (Default when omitted) Returns the first valid recipe execution graph.
+- **Multi-Goal Cascades**: e.g., `[cheapest, fastest]` evaluates goals left-to-right, using secondary goals to break ties.
+

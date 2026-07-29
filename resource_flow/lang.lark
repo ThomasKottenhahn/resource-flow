@@ -6,7 +6,7 @@ program: (statement ";")*
 
     proc_header: (label tags? | tags) ":"
 
-    query: (label tags?)? "make" multiset_expr
+    query: (label tags? | tags)? "make" multiset_expr
 
     ?multiset_expr: multiset
                     | "(" multiset ")"

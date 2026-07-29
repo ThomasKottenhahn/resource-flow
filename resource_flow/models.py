@@ -176,11 +176,20 @@ class Process:
 
 
 class Query:
-    def __init__(self, query: set[tuple[Quantity, Resource]]) -> None:
+    def __init__(
+        self,
+        query: set[tuple[Quantity, Resource]],
+        goals: tuple[str, ...] | list[str] | None = None,
+    ) -> None:
         self.query = query
+        self.goals = tuple(goals) if goals else ("any",)
 
     def __repr__(self) -> str:
-        return f"Query for: {self.query}"
+        goal_str = f" [{', '.join(self.goals)}]" if self.goals != ("any",) else ""
+        return f"Query{goal_str} for: {self.query}"
 
     def add(self, other: "Query") -> None:
         self.query = self.query | other.query
+        if other.goals != ("any",):
+            self.goals = other.goals
+

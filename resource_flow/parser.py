@@ -138,7 +138,23 @@ class RecipeTransformer(Transformer):
 
     def query(self, items):
         multiset = items[-1]
-        return Query(multiset)
+        parsed_tags = []
+        for item in items[:-1]:
+            if isinstance(item, list):
+                parsed_tags = item
+
+        goals = []
+        if parsed_tags:
+            for t in parsed_tags:
+                tag_type = t[0]
+                if tag_type == "flag":
+                    goals.append(t[1])
+                elif tag_type == "kv":
+                    key, val_num = t[1], t[2]
+                    goals.append(f"{key}:{val_num}")
+
+        return Query(multiset, goals=goals if goals else ("any",))
+
 
     def program(self, items):
         processes = set()
