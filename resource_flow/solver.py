@@ -1,3 +1,4 @@
+from typing import Any
 from .models import Process, Query, Quantity, Resource
 
 
@@ -290,10 +291,11 @@ class RecipeSolver:
         final_demands: dict[str, Quantity],
         dag_basic_resources: dict[str, Resource],
         processes_in_dag: list[Process],
-        goal: str,
+        goal: Any,
         time_unit: str = "min",
     ) -> float:
-        if goal == "cheapest":
+        from .models import AggregateGoal
+        if goal == "cheapest" or goal == "min cost":
             res_cost = 0.0
             for name, qty in final_demands.items():
                 res = self.basic_resources.get(name) or dag_basic_resources.get(name)
@@ -305,7 +307,7 @@ class RecipeSolver:
                 proc_cost += proc.cost * scale
             return res_cost + proc_cost
 
-        elif goal == "fastest":
+        elif goal == "fastest" or goal == "min time":
             total_time = 0.0
             for proc in processes_in_dag:
                 if proc.time > 0:
@@ -315,6 +317,34 @@ class RecipeSolver:
                     converted = q_time.convert_to(time_unit)
                     total_time += converted.val
             return total_time
+
+        elif isinstance(goal, AggregateGoal):
+            tag_name = goal.tag
+            is_max = goal.op == "max"
+            val = 0.0
+            prefix = tag_name + ":"
+
+            for proc in processes_in_dag:
+                if tag_name in proc.tags:
+                    val += 1.0
+                
+                scale = process_scales.get(proc.name, 0.0)
+                for t in proc.tags:
+                    if t.startswith(prefix):
+                        kv_val = float(t.split(":")[1].strip())
+                        val += kv_val * scale
+
+            for name, qty in final_demands.items():
+                res = self.basic_resources.get(name) or dag_basic_resources.get(name)
+                if res:
+                    if tag_name in res.tags:
+                        val += 1.0
+                    for t in res.tags:
+                        if t.startswith(prefix):
+                            kv_val = float(t.split(":")[1].strip())
+                            val += kv_val * qty.val
+
+            return -val if is_max else val
 
         elif goal == "any":
             return 0.0

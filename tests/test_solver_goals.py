@@ -214,3 +214,61 @@ def test_solver_goal_basic_vs_process_cost_comparison(tmp_path):
     metrics = solver.get_metrics(scales)
     assert metrics["total_cost"] == pytest.approx(5.75, abs=0.01)
 
+
+def test_solver_goal_aggregate_custom_metrics(tmp_path):
+    recipe_content = """
+    harvest_manual [manual_labour, co2: 2, throughput: 10]: 100 g seeds * -> 100 kg crops;
+    harvest_machine [automated, co2: 50, throughput: 100]: 100 g seeds * -> 100 kg crops;
+    
+    [min manual_labour] make 100 kg crops;
+    """
+    recipe_file = tmp_path / "custom_metrics_min.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    from resource_flow.parser import RecipeParser
+    from resource_flow.solver import RecipeSolver
+
+    parser = RecipeParser()
+    _, processes, query = parser.parse_file(str(recipe_file))
+    solver = RecipeSolver(processes, query)
+    scales = solver.solve()
+    
+    # [min manual_labour] should prefer harvest_machine
+    assert "harvest_machine" in scales
+    assert "harvest_manual" not in scales
+
+    recipe_content_max = """
+    harvest_manual [manual_labour, co2: 2, throughput: 10]: 100 g seeds * -> 100 kg crops;
+    harvest_machine [automated, co2: 50, throughput: 100]: 100 g seeds * -> 100 kg crops;
+    
+    [max throughput] make 100 kg crops;
+    """
+    recipe_file_max = tmp_path / "custom_metrics_max.rf"
+    recipe_file_max.write_text(recipe_content_max, encoding="utf-8")
+    
+    _, processes, query = parser.parse_file(str(recipe_file_max))
+    solver = RecipeSolver(processes, query)
+    scales = solver.solve()
+    
+    # [max throughput] should also prefer harvest_machine
+    assert "harvest_machine" in scales
+    assert "harvest_manual" not in scales
+    
+    recipe_content_min_co2 = """
+    harvest_manual [manual_labour, co2: 2, throughput: 10]: 100 g seeds * -> 100 kg crops;
+    harvest_machine [automated, co2: 50, throughput: 100]: 100 g seeds * -> 100 kg crops;
+    
+    [min co2] make 100 kg crops;
+    """
+    recipe_file_min_co2 = tmp_path / "custom_metrics_min_co2.rf"
+    recipe_file_min_co2.write_text(recipe_content_min_co2, encoding="utf-8")
+    
+    _, processes, query = parser.parse_file(str(recipe_file_min_co2))
+    solver = RecipeSolver(processes, query)
+    scales = solver.solve()
+    
+    # [min co2] should prefer harvest_manual
+    assert "harvest_manual" in scales
+    assert "harvest_machine" not in scales
+
+

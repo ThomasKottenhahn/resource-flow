@@ -1,9 +1,22 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import Process, Query, Quantity, Resource
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource
 
 
 class RecipeTransformer(Transformer):
+    def min_goal(self, items):
+        return ("min_goal", str(items[0]))
+
+    def max_goal(self, items):
+        return ("max_goal", str(items[0]))
+
+    def rel_goal(self, items):
+        tag = str(items[0])
+        op = str(items[1])
+        val = float(items[2])
+        unit = str(items[3]) if len(items) > 3 and items[3] is not None else None
+        return ("rel_goal", tag, op, val, unit)
+
     def negated_tag(self, items):
         return ("negated", str(items[0]))
 
@@ -147,11 +160,26 @@ class RecipeTransformer(Transformer):
         if parsed_tags:
             for t in parsed_tags:
                 tag_type = t[0]
-                if tag_type == "flag":
-                    goals.append(t[1])
+                if tag_type == "min_goal":
+                    goals.append(AggregateGoal("min", t[1]))
+                elif tag_type == "max_goal":
+                    goals.append(AggregateGoal("max", t[1]))
+                elif tag_type == "rel_goal":
+                    goals.append(RelationalGoal(t[1], t[2], t[3], t[4]))
+                elif tag_type == "flag":
+                    flag_name = t[1]
+                    if flag_name == "cheapest":
+                        goals.append(AggregateGoal("min", "cost"))
+                    elif flag_name == "fastest":
+                        goals.append(AggregateGoal("min", "time"))
+                    elif flag_name == "any":
+                        goals.append("any")
+                    else:
+                        goals.append(AggregateGoal("min", flag_name))
                 elif tag_type == "kv":
                     key, val_num = t[1], t[2]
-                    goals.append(f"{key}:{val_num}")
+                    unit_str = t[3] if len(t) > 3 else None
+                    goals.append(RelationalGoal(key, "<=", val_num, unit_str))
 
         return Query(multiset, goals=goals if goals else ("any",))
 

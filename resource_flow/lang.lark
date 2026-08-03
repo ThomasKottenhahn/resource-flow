@@ -19,13 +19,22 @@ program: (statement ";")*
 
     tags: "[" tag ("," tag)* "]"
 
-    ?tag: kv_tag
+    ?tag: min_goal
+        | max_goal
+        | rel_goal
+        | kv_tag
         | negated_tag
         | flag_tag
+
+    min_goal: "min" IDENTIFIER
+    max_goal: "max" IDENTIFIER
+    rel_goal: IDENTIFIER REL_OP NUMBER UNIT?
 
     negated_tag: "!" IDENTIFIER
     kv_tag: IDENTIFIER ":" NUMBER UNIT?
     flag_tag: IDENTIFIER
+
+    REL_OP: "<=" | "<" | ">=" | ">" | "==" | "!="
 
     BASIC: "*"
     UNIT: "g" | "kg" | "ml" | "l" | "piece" | "min" | "s" | "h"

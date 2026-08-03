@@ -175,21 +175,90 @@ class Process:
 
 
 
+class AggregateGoal:
+    def __init__(self, op: str, tag: str) -> None:
+        self.op = op.lower()
+        self.tag = tag
+
+    def __repr__(self) -> str:
+        return f"{self.op} {self.tag}"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            if self.tag == "cost" and self.op == "min" and other in ("cheapest", "min cost"):
+                return True
+            if self.tag == "time" and self.op == "min" and other in ("fastest", "min time"):
+                return True
+            return f"{self.op} {self.tag}" == other
+        if not isinstance(other, AggregateGoal):
+            return False
+        return self.op == other.op and self.tag == other.tag
+
+    def __hash__(self) -> int:
+        return hash((self.op, self.tag))
+
+
+class RelationalGoal:
+    def __init__(self, tag: str, op: str, val: float, unit: str | None = None) -> None:
+        self.tag = tag
+        self.op = op
+        self.val = float(val)
+        self.unit = unit
+
+    def __repr__(self) -> str:
+        unit_str = f" {self.unit}" if self.unit else ""
+        return f"{self.tag} {self.op} {self.val}{unit_str}"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return str(self) == other
+        if not isinstance(other, RelationalGoal):
+            return False
+        return (
+            self.tag == other.tag
+            and self.op == other.op
+            and self.val == other.val
+            and self.unit == other.unit
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.tag, self.op, self.val, self.unit))
+
+
+GoalType = AggregateGoal | RelationalGoal | str
+
+
 class Query:
     def __init__(
         self,
         query: set[tuple[Quantity, Resource]],
-        goals: tuple[str, ...] | list[str] | None = None,
+        goals: tuple[GoalType, ...] | list[GoalType] | None = None,
     ) -> None:
         self.query = query
-        self.goals = tuple(goals) if goals else ("any",)
+        normalized = []
+        if goals:
+            for g in goals:
+                if isinstance(g, (AggregateGoal, RelationalGoal)):
+                    normalized.append(g)
+                elif g == "cheapest":
+                    normalized.append(AggregateGoal("min", "cost"))
+                elif g == "fastest":
+                    normalized.append(AggregateGoal("min", "time"))
+                elif g == "any":
+                    normalized.append("any")
+                elif isinstance(g, str):
+                    normalized.append(AggregateGoal("min", g))
+                else:
+                    normalized.append(g)
+        self.goals: tuple[GoalType, ...] = tuple(normalized) if normalized else ("any",)
 
     def __repr__(self) -> str:
-        goal_str = f" [{', '.join(self.goals)}]" if self.goals != ("any",) else ""
+        goal_str = f" [{', '.join(str(g) for g in self.goals)}]" if self.goals != ("any",) else ""
         return f"Query{goal_str} for: {self.query}"
 
     def add(self, other: "Query") -> None:
         self.query = self.query | other.query
         if other.goals != ("any",):
             self.goals = other.goals
+
 
