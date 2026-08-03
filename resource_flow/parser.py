@@ -64,7 +64,11 @@ class RecipeTransformer(Transformer):
                 elif key == "time":
                     raise ValueError("Resources cannot have a time tag")
                 else:
-                    tags.add(f"{key}:{val_num}")
+                    if unit_str:
+                        base_qty = Quantity(val_num, unit_str).to_base_unit()
+                        tags.add(f"{key}:{base_qty.val}")
+                    else:
+                        tags.add(f"{key}:{val_num}")
 
         if is_basic:
             tags.add("basic")
@@ -137,7 +141,11 @@ class RecipeTransformer(Transformer):
                         if unit_str:
                             time_unit = unit_str
                     else:
-                        proc_tags.add(f"{key}:{val_num}")
+                        if unit_str:
+                            base_qty = Quantity(val_num, unit_str).to_base_unit()
+                            proc_tags.add(f"{key}:{base_qty.val}")
+                        else:
+                            proc_tags.add(f"{key}:{val_num}")
 
         return Process(
             name,

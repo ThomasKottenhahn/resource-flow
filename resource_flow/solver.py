@@ -296,6 +296,30 @@ class RecipeSolver:
     ) -> float:
         from .models import AggregateGoal
         if goal == "cheapest" or goal == "min cost":
+            return self._calculate_metric(process_scales, final_demands, dag_basic_resources, processes_in_dag, "cost", time_unit)
+
+        elif goal == "fastest" or goal == "min time":
+            return self._calculate_metric(process_scales, final_demands, dag_basic_resources, processes_in_dag, "time", time_unit)
+
+        elif isinstance(goal, AggregateGoal):
+            val = self._calculate_metric(process_scales, final_demands, dag_basic_resources, processes_in_dag, goal.tag, time_unit)
+            return -val if goal.op == "max" else val
+
+        elif goal == "any":
+            return 0.0
+
+        return 0.0
+
+    def _calculate_metric(
+        self,
+        process_scales: dict[str, float],
+        final_demands: dict[str, Quantity],
+        dag_basic_resources: dict[str, Resource],
+        processes_in_dag: list[Process],
+        tag_name: str,
+        time_unit: str = "min",
+    ) -> float:
+        if tag_name == "cost":
             res_cost = 0.0
             for name, qty in final_demands.items():
                 res = self.basic_resources.get(name) or dag_basic_resources.get(name)
@@ -307,7 +331,7 @@ class RecipeSolver:
                 proc_cost += proc.cost * scale
             return res_cost + proc_cost
 
-        elif goal == "fastest" or goal == "min time":
+        elif tag_name == "time":
             total_time = 0.0
             for proc in processes_in_dag:
                 if proc.time > 0:
@@ -318,9 +342,7 @@ class RecipeSolver:
                     total_time += converted.val
             return total_time
 
-        elif isinstance(goal, AggregateGoal):
-            tag_name = goal.tag
-            is_max = goal.op == "max"
+        else:
             val = 0.0
             prefix = tag_name + ":"
 
@@ -344,12 +366,7 @@ class RecipeSolver:
                             kv_val = float(t.split(":")[1].strip())
                             val += kv_val * qty.val
 
-            return -val if is_max else val
-
-        elif goal == "any":
-            return 0.0
-
-        return 0.0
+            return val
 
     def build_dag(self) -> tuple[list[Process], set[str]]:
         if self.processes_in_dag:
@@ -357,20 +374,59 @@ class RecipeSolver:
 
         candidates = self._find_all_candidate_dags()
 
-        ranked_candidates = []
+        from .models import AggregateGoal, RelationalGoal
+        relational_goals = [g for g in self.query.goals if isinstance(g, RelationalGoal)]
+        aggregate_goals = [g for g in self.query.goals if not isinstance(g, RelationalGoal)]
+
+        valid_candidates = []
+        closest_diff = float("inf")
+        closest_info = None
+
         for procs, basic_reqs in candidates:
             proc_scales, demands, surplus, dag_basics = self._solve_dag(procs)
-            scores = tuple(
-                self.evaluate_goal(proc_scales, demands, dag_basics, procs, goal)
-                for goal in self.query.goals
-            )
-            tie_breaker = tuple(sorted(p.name for p in procs))
-            ranked_candidates.append(
-                (scores, tie_breaker, procs, basic_reqs, proc_scales, demands, surplus, dag_basics)
-            )
+            
+            passed_all = True
+            for g in relational_goals:
+                target_val = g.val
+                if g.unit:
+                    target_val = Quantity(g.val, g.unit).to_base_unit().val
+                
+                metric_val = self._calculate_metric(proc_scales, demands, dag_basics, procs, g.tag, time_unit="s")
+                
+                passed = False
+                if g.op == "<=": passed = metric_val <= target_val
+                elif g.op == "<": passed = metric_val < target_val
+                elif g.op == ">=": passed = metric_val >= target_val
+                elif g.op == ">": passed = metric_val > target_val
+                elif g.op == "==": passed = metric_val == target_val
+                elif g.op == "!=": passed = metric_val != target_val
+                
+                if not passed:
+                    passed_all = False
+                    diff = abs(metric_val - target_val)
+                    if diff < closest_diff:
+                        closest_diff = diff
+                        closest_info = (g, metric_val)
+                    break
 
-        ranked_candidates.sort(key=lambda item: (item[0], item[1]))
-        best = ranked_candidates[0]
+            if passed_all:
+                scores = tuple(
+                    self.evaluate_goal(proc_scales, demands, dag_basics, procs, goal)
+                    for goal in aggregate_goals
+                )
+                tie_breaker = tuple(sorted(p.name for p in procs))
+                valid_candidates.append(
+                    (scores, tie_breaker, procs, basic_reqs, proc_scales, demands, surplus, dag_basics)
+                )
+
+        if not valid_candidates:
+            if closest_info:
+                g, val = closest_info
+                raise ValueError(f"No solution found for {g}. Closest solution found: {g.tag} = {val}")
+            raise ValueError("No valid processes found to satisfy the request.")
+
+        valid_candidates.sort(key=lambda item: (item[0], item[1]))
+        best = valid_candidates[0]
 
         self.processes_in_dag = best[2]
         self.basic_requirements = best[3]

@@ -272,3 +272,50 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     assert "harvest_machine" not in scales
 
 
+def test_solver_goal_relational_constraints(tmp_path):
+    recipe_content = """
+    harvest_manual [manual_labour, time: 2 h]: 100 g seeds * -> 100 kg crops;
+    harvest_machine [automated, time: 10 min]: 100 g seeds * -> 100 kg crops;
+    
+    [time <= 30 min] make 100 kg crops;
+    """
+    recipe_file = tmp_path / "relational_constraints.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    from resource_flow.parser import RecipeParser
+    from resource_flow.solver import RecipeSolver
+
+    parser = RecipeParser()
+    _, processes, query = parser.parse_file(str(recipe_file))
+    solver = RecipeSolver(processes, query)
+    scales = solver.solve()
+    
+    # 2 h is 120 min, so harvest_manual fails the constraint.
+    # harvest_machine (10 min) passes.
+    assert "harvest_machine" in scales
+    assert "harvest_manual" not in scales
+
+
+def test_solver_goal_infeasible_closest_match(tmp_path):
+    recipe_content = """
+    harvest_manual [manual_labour: 5]: 100 g seeds * -> 100 kg crops;
+    harvest_machine [manual_labour: 1]: 100 g seeds * -> 100 kg crops;
+    
+    [manual_labour == 0] make 100 kg crops;
+    """
+    recipe_file = tmp_path / "infeasible.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    from resource_flow.parser import RecipeParser
+    from resource_flow.solver import RecipeSolver
+    import pytest
+
+    parser = RecipeParser()
+    _, processes, query = parser.parse_file(str(recipe_file))
+    solver = RecipeSolver(processes, query)
+    
+    with pytest.raises(ValueError, match=r"No solution found for manual_labour == 0\.0\. Closest solution found: manual_labour = 1\.0"):
+        solver.solve()
+
+
+
