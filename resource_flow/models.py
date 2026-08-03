@@ -1,3 +1,6 @@
+from typing import Any
+
+
 class Resource:
     def __init__(
         self,
@@ -175,10 +178,19 @@ class Process:
 
 
 
-class AggregateGoal:
+class Goal:
+    def evaluate(self, dag: Any) -> float | bool:
+        raise NotImplementedError
+
+
+class AggregateGoal(Goal):
     def __init__(self, op: str, tag: str) -> None:
         self.op = op.lower()
         self.tag = tag
+
+    def evaluate(self, dag: Any) -> float:
+        val = float(dag.calculate_metric(self.tag))
+        return -val if self.op == "max" else val
 
     def __repr__(self) -> str:
         return f"{self.op} {self.tag}"
@@ -198,12 +210,31 @@ class AggregateGoal:
         return hash((self.op, self.tag))
 
 
-class RelationalGoal:
+class RelationalGoal(Goal):
     def __init__(self, tag: str, op: str, val: float, unit: str | None = None) -> None:
         self.tag = tag
         self.op = op
         self.val = float(val)
         self.unit = unit
+
+    def evaluate(self, dag: Any) -> bool:
+        target_val = self.val
+        if self.unit:
+            try:
+                target_val = Quantity(self.val, self.unit).to_base_unit().val
+                metric_val = float(dag.calculate_metric(self.tag, unit="s" if self.unit in {"s", "min", "h"} else self.unit))
+            except ValueError:
+                metric_val = float(dag.calculate_metric(self.tag, unit=self.unit))
+        else:
+            metric_val = float(dag.calculate_metric(self.tag))
+
+        if self.op == "<=": return metric_val <= target_val
+        if self.op == "<": return metric_val < target_val
+        if self.op == ">=": return metric_val >= target_val
+        if self.op == ">": return metric_val > target_val
+        if self.op == "==": return metric_val == target_val
+        if self.op == "!=": return metric_val != target_val
+        return False
 
     def __repr__(self) -> str:
         unit_str = f" {self.unit}" if self.unit else ""
@@ -225,7 +256,23 @@ class RelationalGoal:
         return hash((self.tag, self.op, self.val, self.unit))
 
 
-GoalType = AggregateGoal | RelationalGoal | str
+class AnyGoal(Goal):
+    def evaluate(self, dag: Any) -> float:
+        return 0.0
+
+    def __repr__(self) -> str:
+        return "any"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return other == "any"
+        return isinstance(other, AnyGoal)
+
+    def __hash__(self) -> int:
+        return hash("any")
+
+
+GoalType = Goal | str
 
 
 class Query:
@@ -235,30 +282,31 @@ class Query:
         goals: tuple[GoalType, ...] | list[GoalType] | None = None,
     ) -> None:
         self.query = query
-        normalized = []
+        normalized: list[Goal] = []
         if goals:
             for g in goals:
-                if isinstance(g, (AggregateGoal, RelationalGoal)):
+                if isinstance(g, Goal):
                     normalized.append(g)
-                elif g == "cheapest":
+                elif g == "cheapest" or g == "min cost":
                     normalized.append(AggregateGoal("min", "cost"))
-                elif g == "fastest":
+                elif g == "fastest" or g == "min time":
                     normalized.append(AggregateGoal("min", "time"))
                 elif g == "any":
-                    normalized.append("any")
+                    normalized.append(AnyGoal())
                 elif isinstance(g, str):
                     normalized.append(AggregateGoal("min", g))
                 else:
                     normalized.append(g)
-        self.goals: tuple[GoalType, ...] = tuple(normalized) if normalized else ("any",)
+        self.goals: tuple[Goal, ...] = tuple(normalized) if normalized else (AnyGoal(),)
 
     def __repr__(self) -> str:
-        goal_str = f" [{', '.join(str(g) for g in self.goals)}]" if self.goals != ("any",) else ""
+        goal_str = f" [{', '.join(str(g) for g in self.goals)}]" if self.goals != (AnyGoal(),) else ""
         return f"Query{goal_str} for: {self.query}"
 
     def add(self, other: "Query") -> None:
         self.query = self.query | other.query
-        if other.goals != ("any",):
+        if other.goals != (AnyGoal(),):
             self.goals = other.goals
+
 
 
