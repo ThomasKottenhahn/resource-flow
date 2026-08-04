@@ -1,5 +1,13 @@
-peel [cost: 1.00, time: 5 min]: 300 g carrots * [cost: 2.00] -> 280 g peeled_carrots;
-chop [cost: 1.00, time: 5 min]: 280 g peeled_carrots -> 270 g chopped_carrots;
-cook [cost: 2.00, time: 15 min]: 270 g chopped_carrots, 500 ml water * [cost: 0.50] -> 700 g carrot_soup;
+peel [time: 5 min]: 
+    500 g carrots * [cost: 2.00, organic, !frozen] 
+    -> 400 g carrots [peeled, organic], 100 g carrot_peelings [organic];
 
-make 700 g carrot_soup;
+roast_peelings [time: 15 min]: 
+    100 g carrot_peelings [organic], 10 ml olive_oil * [cost: 0.20] 
+    -> 100 g roasted_peelings;
+
+simmer_soup [time: 20 min]: 
+    400 g carrots [peeled, organic], 500 ml vegetable_stock * [cost: 1.50] 
+    -> 700 g carrot_soup;
+
+make 700 g carrot_soup, 100 g roasted_peelings;

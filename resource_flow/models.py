@@ -90,7 +90,7 @@ class Quantity:
         if self.unit == target_unit:
             return Quantity(self.val, target_unit)
 
-        weight_units = {"g": 1.0, "kg": 1000.0}
+        weight_units = {"mg": 0.001, "g": 1.0, "kg": 1000.0}
         if self.unit in weight_units and target_unit in weight_units:
             val_in_g = self.val * weight_units[self.unit]
             return Quantity(val_in_g / weight_units[target_unit], target_unit)
@@ -108,7 +108,7 @@ class Quantity:
         raise ValueError(f"Cannot convert unit '{self.unit}' to '{target_unit}'")
 
     def to_base_unit(self) -> "Quantity":
-        weight_units = {"g": "g", "kg": "g"}
+        weight_units = {"mg": "g", "g": "g", "kg": "g"}
         if self.unit in weight_units:
             return self.convert_to("g")
 

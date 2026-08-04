@@ -1,4 +1,0 @@
-mix_batter [time: 10 min]: 200 g flour * [cost: 2.00], 300 ml milk * [cost: 1.50], 2 piece eggs * [cost: 2.00] -> 480 g pancake_batter * [cost: 15.00];
-fry [time: 15 min]: 500 g pancake_batter, 20 ml oil * [cost: 0.02] -> 500 g pancakes;
-
-[cheapest] make 500 g pancakes;

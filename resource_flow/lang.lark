@@ -37,11 +37,11 @@ program: (statement ";")*
     REL_OP: "<=" | "<" | ">=" | ">" | "==" | "!="
 
     BASIC: "*"
-    UNIT: "g" | "kg" | "ml" | "l" | "piece" | "min" | "s" | "h"
+    UNIT: "mg" | "g" | "kg" | "ml" | "l" | "piece" | "min" | "s" | "h" | "kWh" | "kJ"
     NAME: IDENTIFIER (" " IDENTIFIER)*
 
     IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_]*/
 
     %import common.WS
     %import common.NUMBER
-    %ignore WS
+    %ignore WS

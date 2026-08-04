@@ -1,7 +1,0 @@
-make_dough [time: 10 min]: 500 g flour * [cost: 1.98], 300 ml water *, 10 g yeast * [cost: 0.20] -> 800 g dough;
-
-rise [time: 2 h]: 800 g dough -> 800 g dough [risen];
-
-bake [time: 30 min]: 780 g dough [risen] -> 700 g bread;
-
-make 700 g bread;

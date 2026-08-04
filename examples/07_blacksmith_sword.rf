@@ -1,0 +1,17 @@
+hand_forge [cost: 10.00, time: 5 h, manual_labour]: 
+    2 kg steel_ingot * [cost: 20.00], 5 kg coal * [cost: 5.00] 
+    -> 1 piece forged_blade [manual];
+
+power_hammer_forge [cost: 25.00, time: 1 h]: 
+    2 kg steel_ingot * [cost: 20.00], 10 kWh electricity * [cost: 3.00] 
+    -> 1 piece forged_blade [automated];
+
+quench_and_grind [cost: 5.00, time: 2 h, manual_labour]: 
+    1 piece forged_blade [manual], 10 l oil * [cost: 2.00] 
+    -> 1 piece steel_sword;
+
+auto_quench_and_grind [cost: 15.00, time: 30 min]: 
+    1 piece forged_blade [automated], 10 l oil * [cost: 2.00] 
+    -> 1 piece steel_sword;
+
+[min manual_labour, fastest] make 1 piece steel_sword;
