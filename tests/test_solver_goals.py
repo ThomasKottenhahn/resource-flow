@@ -318,4 +318,46 @@ def test_solver_goal_infeasible_closest_match(tmp_path):
         solver.solve()
 
 
+def test_basic_resource_custom_tag_scaling(tmp_path):
+    rf_code_grams = """
+    carrots: 1000 g carrots * [co2: 0.2 kg] -> 1000 g prepped_carrots;
+    [min co2] make 1000 g prepped_carrots;
+    """
+    rf_code_kg = """
+    carrots: 1 kg carrots * [co2: 0.2 kg] -> 1000 g prepped_carrots;
+    [min co2] make 1000 g prepped_carrots;
+    """
+    f_grams = tmp_path / "grams.rf"
+    f_grams.write_text(rf_code_grams, encoding="utf-8")
+    f_kg = tmp_path / "kg.rf"
+    f_kg.write_text(rf_code_kg, encoding="utf-8")
+
+    parser = RecipeParser()
+    _, procs_g, q_g = parser.parse_file(str(f_grams))
+    dag_g = RecipeSolver(procs_g, q_g).solve()
+
+    _, procs_kg, q_kg = parser.parse_file(str(f_kg))
+    dag_kg = RecipeSolver(procs_kg, q_kg).solve()
+
+    assert dag_g.calculate_metric("co2") == dag_kg.calculate_metric("co2") == 200.0
+
+
+def test_relational_goal_error_message_unit_formatting(tmp_path):
+    rf_code = """
+    bake [time: 60 min]: 100 g dough -> 100 g bread;
+    base: 100 g flour * -> 100 g dough;
+    [time <= 45 min] make 100 g bread;
+    """
+    f = tmp_path / "bake.rf"
+    f.write_text(rf_code, encoding="utf-8")
+
+    parser = RecipeParser()
+    _, procs, q = parser.parse_file(str(f))
+    solver = RecipeSolver(procs, q)
+
+    with pytest.raises(ValueError, match=r"No solution found for time <= 45\.0 min\. Closest solution found: time = 60\.0"):
+        solver.solve()
+
+
+
 

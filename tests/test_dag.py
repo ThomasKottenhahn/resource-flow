@@ -97,3 +97,19 @@ def test_dag_calculate_custom_metric_tags():
 
     # resource tag: eco_tax: 0.5 * qty 4.0 = 2.0
     assert dag.calculate_metric("eco_tax") == 2.0
+
+
+def test_dag_calculate_custom_metric_unit_conversion():
+    prod = Resource("prod")
+    proc = Process(
+        name="Make Product",
+        inp=set(),
+        out={(Quantity(1.0, "kg"), prod)},
+        tags={"co2: 12500.0"},
+    )
+    node = DAGNode(process=proc, scale=1.0)
+    dag = DAG(nodes=[node], edges=[])
+
+    assert dag.calculate_metric("co2") == 12500.0
+    assert dag.calculate_metric("co2", unit="kg") == 12.5
+

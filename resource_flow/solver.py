@@ -248,7 +248,14 @@ class RecipeSolver:
 
         # One basic edge per unique basic resource using final accumulated demands
         for name, qty in demands.items():
-            basic_res = self.basic_resources.get(name) or dag_basic_resources.get(name)
+            dag_res = dag_basic_resources.get(name)
+            global_res = self.basic_resources.get(name)
+            if dag_res and dag_res.cost > 0:
+                basic_res = dag_res
+            elif global_res and global_res.cost > 0:
+                basic_res = global_res
+            else:
+                basic_res = dag_res or global_res
             if basic_res:
                 edges.append(DAGEdge(
                     source=None,
@@ -389,7 +396,8 @@ class RecipeSolver:
                     diff = abs(metric_val - target_val)
                     if diff < closest_diff:
                         closest_diff = diff
-                        closest_info = (g, metric_val)
+                        display_val = candidate_dag.calculate_metric(g.tag, unit=g.unit) if g.unit else candidate_dag.calculate_metric(g.tag)
+                        closest_info = (g, display_val)
                     break
 
             if passed_all:
@@ -425,11 +433,16 @@ class RecipeSolver:
         d = dag or self._result_dag
         if d is None:
             raise RuntimeError("Call solve() before using visualization methods.")
+        dag_basics = {
+            edge.resource.name: edge.resource
+            for edge in d.edges
+            if d._is_basic_edge(edge)
+        }
         return Visualizer(
             dag=d,
             demands=self.final_demands,
             surplus=self.final_surplus,
-            basic_resources=self.basic_resources,
+            basic_resources=dag_basics or self.basic_resources,
             query=self.query,
         )
 

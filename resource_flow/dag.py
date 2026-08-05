@@ -109,7 +109,8 @@ class DAG:
 
             if unit:
                 try:
-                    q_val = Quantity(val, "base").convert_to(unit)
+                    base_unit = Quantity(1.0, unit).to_base_unit().unit
+                    q_val = Quantity(val, base_unit).convert_to(unit)
                     return q_val.val
                 except ValueError:
                     pass

@@ -105,6 +105,11 @@ class Quantity:
             val_in_s = self.val * time_units[self.unit]
             return Quantity(val_in_s / time_units[target_unit], target_unit)
 
+        energy_units = {"kJ": 1.0, "kWh": 3600.0}
+        if self.unit in energy_units and target_unit in energy_units:
+            val_in_kj = self.val * energy_units[self.unit]
+            return Quantity(val_in_kj / energy_units[target_unit], target_unit)
+
         raise ValueError(f"Cannot convert unit '{self.unit}' to '{target_unit}'")
 
     def to_base_unit(self) -> "Quantity":
@@ -119,6 +124,10 @@ class Quantity:
         time_units = {"s": "s", "min": "s", "h": "s"}
         if self.unit in time_units:
             return self.convert_to("s")
+
+        energy_units = {"kJ": "kJ", "kWh": "kJ"}
+        if self.unit in energy_units:
+            return self.convert_to("kJ")
 
         return Quantity(self.val, self.unit)
 

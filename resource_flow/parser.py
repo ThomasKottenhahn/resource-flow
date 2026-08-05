@@ -51,6 +51,9 @@ class RecipeTransformer(Transformer):
         negated_tags = set()
         cost = 0.0
 
+        qty = Quantity(val, unit)
+        base_resource_qty = qty.to_base_unit()
+
         for t in parsed_tags:
             tag_type = t[0]
             if tag_type == "flag":
@@ -64,11 +67,10 @@ class RecipeTransformer(Transformer):
                 elif key == "time":
                     raise ValueError("Resources cannot have a time tag")
                 else:
-                    if unit_str:
-                        base_qty = Quantity(val_num, unit_str).to_base_unit()
-                        tags.add(f"{key}:{base_qty.val}")
-                    else:
-                        tags.add(f"{key}:{val_num}")
+                    tag_val = Quantity(val_num, unit_str).to_base_unit().val if unit_str else val_num
+                    if is_basic and qty.val > 0:
+                        tag_val = tag_val / qty.val
+                    tags.add(f"{key}:{tag_val}")
 
         if is_basic:
             tags.add("basic")
