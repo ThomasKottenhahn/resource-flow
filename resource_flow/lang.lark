@@ -2,18 +2,24 @@ program: (statement ";")*
     ?statement: transition
                 | query
 
-    transition: proc_header? multiset_expr "->" multiset_expr
+    transition: proc_header? multiset_expr "->" multiset_expr tool_clause?
 
     proc_header: (label tags? | tags) ":"
 
-    query: (label tags? | tags)? "make" multiset_expr
+    query: (label tags? | tags)? "make" multiset_expr using_clause?
 
     ?multiset_expr: multiset
                     | "(" multiset ")"
 
     multiset: resource ("," resource)*
 
-    resource: NUMBER UNIT NAME BASIC? tags?
+    resource: NUMBER UNIT name BASIC? tags?
+
+    tool_clause: "with" tool ("," tool)*
+    using_clause: "using" tool ("," tool)*
+    tool: NUMBER? UNIT? name
+
+    name: IDENTIFIER (" " IDENTIFIER)*
 
     label: IDENTIFIER
 
@@ -38,8 +44,7 @@ program: (statement ";")*
 
     BASIC: "*"
     UNIT: "mg" | "g" | "kg" | "ml" | "l" | "piece" | "min" | "s" | "h" | "kWh" | "kJ"
-    NAME: IDENTIFIER (" " IDENTIFIER)*
-
+    
     IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_]*/
 
     %import common.WS

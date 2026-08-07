@@ -1,6 +1,6 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool
 
 
 class RecipeTransformer(Transformer):
@@ -111,18 +111,58 @@ class RecipeTransformer(Transformer):
         else:
             return str(items[0]), []
 
+    def name(self, items):
+        return " ".join(str(i) for i in items)
+
+    def tool(self, items):
+        if len(items) == 1:
+            qty_val = 1.0
+            unit = "piece"
+            name = items[0]
+        elif len(items) == 2:
+            try:
+                qty_val = float(items[0])
+                unit = "piece"
+            except ValueError:
+                qty_val = 1.0
+                unit = str(items[0])
+            name = items[1]
+        else:
+            qty_val = float(items[0])
+            unit = str(items[1])
+            name = items[2]
+        return Tool(str(name), Quantity(qty_val, unit))
+
+    def tool_clause(self, items):
+        return set(items)
+
+    def using_clause(self, items):
+        return set(items)
+
     def transition(self, items):
         name = ""
         parsed_tags = []
-        inp = set()
-        out = set()
+        inp = None
+        out = None
+        tools = set()
 
-        if len(items) == 3:
-            header, inp, out = items
-            if header is not None:
-                name, parsed_tags = header
-        else:
-            inp, out = items[0], items[1]
+        for item in items:
+            if item is None:
+                continue
+            if isinstance(item, tuple):
+                name, parsed_tags = item
+            elif isinstance(item, set):
+                if len(item) > 0 and type(list(item)[0]).__name__ == "Tool":
+                    tools = item
+                elif inp is None:
+                    inp = item
+                else:
+                    out = item
+
+        if inp is None:
+            inp = set()
+        if out is None:
+            out = set()
 
         proc_tags = set()
         cost = 0.0
@@ -157,14 +197,24 @@ class RecipeTransformer(Transformer):
             time=proc_time,
             time_unit=time_unit,
             tags=proc_tags,
+            tools=tools,
         )
 
     def query(self, items):
-        multiset = items[-1]
+        multiset = set()
         parsed_tags = []
-        for item in items[:-1]:
+        using = set()
+        
+        for item in items:
+            if item is None:
+                continue
             if isinstance(item, list):
                 parsed_tags = item
+            elif isinstance(item, set):
+                if len(item) > 0 and type(list(item)[0]).__name__ == "Tool":
+                    using = item
+                else:
+                    multiset = item
 
         goals = []
         if parsed_tags:
@@ -191,7 +241,7 @@ class RecipeTransformer(Transformer):
                     unit_str = t[3] if len(t) > 3 else None
                     goals.append(RelationalGoal(key, "<=", val_num, unit_str))
 
-        return Query(multiset, goals=goals if goals else ("any",))
+        return Query(multiset, goals=goals if goals else ("any",), tools=using)
 
 
     def program(self, items):

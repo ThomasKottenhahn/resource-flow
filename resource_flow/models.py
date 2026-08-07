@@ -156,6 +156,23 @@ class Quantity:
         return self.__mul__(factor)
 
 
+class Tool:
+    def __init__(self, name: str, quantity: Quantity) -> None:
+        self.name = name
+        self.quantity = quantity
+
+    def __repr__(self) -> str:
+        return f"{self.quantity} {self.name}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Tool):
+            return False
+        return self.name == other.name and self.quantity == other.quantity
+
+    def __hash__(self) -> int:
+        return hash((self.name, self.quantity))
+
+
 class Process:
     def __init__(
         self,
@@ -166,6 +183,7 @@ class Process:
         time: float = 0.0,
         time_unit: str = "min",
         tags: set[str] | frozenset[str] | None = None,
+        tools: set["Tool"] | frozenset["Tool"] | None = None,
     ) -> None:
         self.name = name
         self.inp = inp
@@ -174,6 +192,7 @@ class Process:
         self.time = float(time)
         self.time_unit = time_unit
         self.tags = frozenset(tags) if tags else frozenset()
+        self.tools = frozenset(tools) if tools else frozenset()
 
     def __repr__(self) -> str:
         tag_strs = [t for t in sorted(self.tags)]
@@ -289,8 +308,10 @@ class Query:
         self,
         query: set[tuple[Quantity, Resource]],
         goals: tuple[GoalType, ...] | list[GoalType] | None = None,
+        tools: set["Tool"] | frozenset["Tool"] | None = None,
     ) -> None:
         self.query = query
+        self.tools = frozenset(tools) if tools else frozenset()
         normalized: list[Goal] = []
         if goals:
             for g in goals:
@@ -314,6 +335,7 @@ class Query:
 
     def add(self, other: "Query") -> None:
         self.query = self.query | other.query
+        self.tools = self.tools | other.tools
         if other.goals != (AnyGoal(),):
             self.goals = other.goals
 
