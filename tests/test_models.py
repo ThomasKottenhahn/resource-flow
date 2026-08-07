@@ -57,9 +57,21 @@ def test_quantity_conversion():
     assert q_l2.val == 0.25
     assert q_l2.unit == "l"
 
+    # Energy conversion
+    q_kwh = Quantity(1.0, "kWh")
+    q_kj = q_kwh.convert_to("kJ")
+    assert q_kj.val == 3600.0
+    assert q_kj.unit == "kJ"
+
+    q_kj2 = Quantity(7200.0, "kJ")
+    q_kwh2 = q_kj2.convert_to("kWh")
+    assert q_kwh2.val == 2.0
+    assert q_kwh2.unit == "kWh"
+
     # Invalid unit conversion
     with pytest.raises(ValueError, match="Cannot convert unit 'kg' to 'ml'"):
         Quantity(1, "kg").convert_to("ml")
+
 
 
 def test_quantity_arithmetic():

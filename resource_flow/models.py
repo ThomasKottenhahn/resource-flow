@@ -1,3 +1,6 @@
+from typing import Any
+
+
 class Resource:
     def __init__(
         self,
@@ -87,7 +90,7 @@ class Quantity:
         if self.unit == target_unit:
             return Quantity(self.val, target_unit)
 
-        weight_units = {"g": 1.0, "kg": 1000.0}
+        weight_units = {"mg": 0.001, "g": 1.0, "kg": 1000.0}
         if self.unit in weight_units and target_unit in weight_units:
             val_in_g = self.val * weight_units[self.unit]
             return Quantity(val_in_g / weight_units[target_unit], target_unit)
@@ -102,10 +105,15 @@ class Quantity:
             val_in_s = self.val * time_units[self.unit]
             return Quantity(val_in_s / time_units[target_unit], target_unit)
 
+        energy_units = {"kJ": 1.0, "kWh": 3600.0}
+        if self.unit in energy_units and target_unit in energy_units:
+            val_in_kj = self.val * energy_units[self.unit]
+            return Quantity(val_in_kj / energy_units[target_unit], target_unit)
+
         raise ValueError(f"Cannot convert unit '{self.unit}' to '{target_unit}'")
 
     def to_base_unit(self) -> "Quantity":
-        weight_units = {"g": "g", "kg": "g"}
+        weight_units = {"mg": "g", "g": "g", "kg": "g"}
         if self.unit in weight_units:
             return self.convert_to("g")
 
@@ -116,6 +124,10 @@ class Quantity:
         time_units = {"s": "s", "min": "s", "h": "s"}
         if self.unit in time_units:
             return self.convert_to("s")
+
+        energy_units = {"kJ": "kJ", "kWh": "kJ"}
+        if self.unit in energy_units:
+            return self.convert_to("kJ")
 
         return Quantity(self.val, self.unit)
 
@@ -175,12 +187,135 @@ class Process:
 
 
 
-class Query:
-    def __init__(self, query: set[tuple[Quantity, Resource]]) -> None:
-        self.query = query
+class Goal:
+    def evaluate(self, dag: Any) -> float | bool:
+        raise NotImplementedError
+
+
+class AggregateGoal(Goal):
+    def __init__(self, op: str, tag: str) -> None:
+        self.op = op.lower()
+        self.tag = tag
+
+    def evaluate(self, dag: Any) -> float:
+        val = float(dag.calculate_metric(self.tag))
+        return -val if self.op == "max" else val
 
     def __repr__(self) -> str:
-        return f"Query for: {self.query}"
+        return f"{self.op} {self.tag}"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            if self.tag == "cost" and self.op == "min" and other in ("cheapest", "min cost"):
+                return True
+            if self.tag == "time" and self.op == "min" and other in ("fastest", "min time"):
+                return True
+            return f"{self.op} {self.tag}" == other
+        if not isinstance(other, AggregateGoal):
+            return False
+        return self.op == other.op and self.tag == other.tag
+
+    def __hash__(self) -> int:
+        return hash((self.op, self.tag))
+
+
+class RelationalGoal(Goal):
+    def __init__(self, tag: str, op: str, val: float, unit: str | None = None) -> None:
+        self.tag = tag
+        self.op = op
+        self.val = float(val)
+        self.unit = unit
+
+    def evaluate(self, dag: Any) -> bool:
+        target_val = self.val
+        if self.unit:
+            try:
+                target_val = Quantity(self.val, self.unit).to_base_unit().val
+                metric_val = float(dag.calculate_metric(self.tag, unit="s" if self.unit in {"s", "min", "h"} else self.unit))
+            except ValueError:
+                metric_val = float(dag.calculate_metric(self.tag, unit=self.unit))
+        else:
+            metric_val = float(dag.calculate_metric(self.tag))
+
+        if self.op == "<=": return metric_val <= target_val
+        if self.op == "<": return metric_val < target_val
+        if self.op == ">=": return metric_val >= target_val
+        if self.op == ">": return metric_val > target_val
+        if self.op == "==": return metric_val == target_val
+        if self.op == "!=": return metric_val != target_val
+        return False
+
+    def __repr__(self) -> str:
+        unit_str = f" {self.unit}" if self.unit else ""
+        return f"{self.tag} {self.op} {self.val}{unit_str}"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return str(self) == other
+        if not isinstance(other, RelationalGoal):
+            return False
+        return (
+            self.tag == other.tag
+            and self.op == other.op
+            and self.val == other.val
+            and self.unit == other.unit
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.tag, self.op, self.val, self.unit))
+
+
+class AnyGoal(Goal):
+    def evaluate(self, dag: Any) -> float:
+        return 0.0
+
+    def __repr__(self) -> str:
+        return "any"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return other == "any"
+        return isinstance(other, AnyGoal)
+
+    def __hash__(self) -> int:
+        return hash("any")
+
+
+GoalType = Goal | str
+
+
+class Query:
+    def __init__(
+        self,
+        query: set[tuple[Quantity, Resource]],
+        goals: tuple[GoalType, ...] | list[GoalType] | None = None,
+    ) -> None:
+        self.query = query
+        normalized: list[Goal] = []
+        if goals:
+            for g in goals:
+                if isinstance(g, Goal):
+                    normalized.append(g)
+                elif g == "cheapest" or g == "min cost":
+                    normalized.append(AggregateGoal("min", "cost"))
+                elif g == "fastest" or g == "min time":
+                    normalized.append(AggregateGoal("min", "time"))
+                elif g == "any":
+                    normalized.append(AnyGoal())
+                elif isinstance(g, str):
+                    normalized.append(AggregateGoal("min", g))
+                else:
+                    normalized.append(g)
+        self.goals: tuple[Goal, ...] = tuple(normalized) if normalized else (AnyGoal(),)
+
+    def __repr__(self) -> str:
+        goal_str = f" [{', '.join(str(g) for g in self.goals)}]" if self.goals != (AnyGoal(),) else ""
+        return f"Query{goal_str} for: {self.query}"
 
     def add(self, other: "Query") -> None:
         self.query = self.query | other.query
+        if other.goals != (AnyGoal(),):
+            self.goals = other.goals
+
+
+

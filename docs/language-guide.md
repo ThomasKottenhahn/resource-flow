@@ -92,11 +92,28 @@ Unit conversions across compatible dimensions occur automatically:
 
 ---
 
-## Make Queries
+## Make Queries and Solver Goals
 
-The `make` query specifies the end product demand:
+The `make` query specifies the end product demand. You can attach solver goals in brackets before `make` to control how alternative process routes are selected:
 
 ```text
 make 1100 g tomato_pasta;
-make 300g salad;
+
+[cheapest] make 1100 g tomato_pasta;
+[fastest] make 1100 g tomato_pasta;
+[cheapest, fastest] make 1100 g tomato_pasta;
+[min manual_labour, time <= 60 min] make 1100 g tomato_pasta;
 ```
+
+### Supported Solver Goals
+- **`[cheapest]`**: Minimizes total cost (`resource_cost` + `process_cost`).
+- **`[fastest]`**: Minimizes total process execution duration.
+- **`[any]`**: (Default when omitted) Returns the first valid recipe execution graph.
+- **Multi-Goal Cascades**: e.g., `[cheapest, fastest]` evaluates goals left-to-right, using secondary goals to break ties.
+
+### Custom Goals
+
+You can define your own goal that operate on the tags used in your processes.
+
+- **`min/max`**: Minimize or maximize the sum of the specified tag (tags without quantity will default to 1): `[min manual_labour]` will reduce the number of processes using the manual_labour tag
+- **Relational goals**: Specify constraints that need to hold for your query. Use `<=`, `>=`, `<`, `>`, `==` and `!=` with a tag and number and optionally a unit: `[time < 5h]` will only allow for solutions with the total process time under 5 hours. If no solution with the constraint is possible, the solver will report the closest possible solution.

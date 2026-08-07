@@ -430,6 +430,28 @@ def test_solver_tagged_resource_and_multi_query_graph_edges(tmp_path):
     assert 'bake -->|"900.00 g lasagna [baked]"| Query' in mermaid_str
 
 
+def test_basic_resource_cost_isolation(tmp_path):
+    rf_code = """
+    cheap_prep: 100 g carrots * [cost: 2] -> 100 g cheap_soup;
+    expensive_prep: 100 g carrots * [cost: 50] -> 100 g exp_soup;
+
+    [cheapest] make 100 g cheap_soup;
+    """
+    f = tmp_path / "cheap.rf"
+    f.write_text(rf_code, encoding="utf-8")
+
+    from resource_flow.parser import RecipeParser
+    parser = RecipeParser()
+    _, procs, q = parser.parse_file(str(f))
+    solver = RecipeSolver(procs, q)
+    dag = solver.solve()
+
+    metrics = solver.get_metrics(dag.process_scales)
+    assert metrics["resource_cost"] == 2.0
+    assert dag.calculate_metric("cost") == 2.0
+
+
+
 
 
 

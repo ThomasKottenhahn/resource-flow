@@ -178,5 +178,28 @@ def test_non_basic_resource_cost_forbidden(tmp_path):
         parser.parse_file(str(recipe_file))
 
 
+def test_parse_general_goals(tmp_path):
+    from resource_flow.models import AggregateGoal, RelationalGoal
+
+    recipe_content = """
+    100 g A -> 100 g B;
+    [min manual_labour, max throughput, cost <= 10, time < 30 min, cheapest] make 100 g B;
+    """
+    recipe_file = tmp_path / "test_goals.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    _, _, query = parser.parse_file(str(recipe_file))
+
+    assert query.goals == (
+        AggregateGoal("min", "manual_labour"),
+        AggregateGoal("max", "throughput"),
+        RelationalGoal("cost", "<=", 10.0, None),
+        RelationalGoal("time", "<", 30.0, "min"),
+        AggregateGoal("min", "cost"),
+    )
+
+
+
 
 

@@ -1,9 +1,22 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import Process, Query, Quantity, Resource
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource
 
 
 class RecipeTransformer(Transformer):
+    def min_goal(self, items):
+        return ("min_goal", str(items[0]))
+
+    def max_goal(self, items):
+        return ("max_goal", str(items[0]))
+
+    def rel_goal(self, items):
+        tag = str(items[0])
+        op = str(items[1])
+        val = float(items[2])
+        unit = str(items[3]) if len(items) > 3 and items[3] is not None else None
+        return ("rel_goal", tag, op, val, unit)
+
     def negated_tag(self, items):
         return ("negated", str(items[0]))
 
@@ -38,6 +51,9 @@ class RecipeTransformer(Transformer):
         negated_tags = set()
         cost = 0.0
 
+        qty = Quantity(val, unit)
+        base_resource_qty = qty.to_base_unit()
+
         for t in parsed_tags:
             tag_type = t[0]
             if tag_type == "flag":
@@ -51,7 +67,10 @@ class RecipeTransformer(Transformer):
                 elif key == "time":
                     raise ValueError("Resources cannot have a time tag")
                 else:
-                    tags.add(f"{key}:{val_num}")
+                    tag_val = Quantity(val_num, unit_str).to_base_unit().val if unit_str else val_num
+                    if is_basic and qty.val > 0:
+                        tag_val = tag_val / qty.val
+                    tags.add(f"{key}:{tag_val}")
 
         if is_basic:
             tags.add("basic")
@@ -124,7 +143,11 @@ class RecipeTransformer(Transformer):
                         if unit_str:
                             time_unit = unit_str
                     else:
-                        proc_tags.add(f"{key}:{val_num}")
+                        if unit_str:
+                            base_qty = Quantity(val_num, unit_str).to_base_unit()
+                            proc_tags.add(f"{key}:{base_qty.val}")
+                        else:
+                            proc_tags.add(f"{key}:{val_num}")
 
         return Process(
             name,
@@ -138,7 +161,38 @@ class RecipeTransformer(Transformer):
 
     def query(self, items):
         multiset = items[-1]
-        return Query(multiset)
+        parsed_tags = []
+        for item in items[:-1]:
+            if isinstance(item, list):
+                parsed_tags = item
+
+        goals = []
+        if parsed_tags:
+            for t in parsed_tags:
+                tag_type = t[0]
+                if tag_type == "min_goal":
+                    goals.append(AggregateGoal("min", t[1]))
+                elif tag_type == "max_goal":
+                    goals.append(AggregateGoal("max", t[1]))
+                elif tag_type == "rel_goal":
+                    goals.append(RelationalGoal(t[1], t[2], t[3], t[4]))
+                elif tag_type == "flag":
+                    flag_name = t[1]
+                    if flag_name == "cheapest":
+                        goals.append(AggregateGoal("min", "cost"))
+                    elif flag_name == "fastest":
+                        goals.append(AggregateGoal("min", "time"))
+                    elif flag_name == "any":
+                        goals.append("any")
+                    else:
+                        goals.append(AggregateGoal("min", flag_name))
+                elif tag_type == "kv":
+                    key, val_num = t[1], t[2]
+                    unit_str = t[3] if len(t) > 3 else None
+                    goals.append(RelationalGoal(key, "<=", val_num, unit_str))
+
+        return Query(multiset, goals=goals if goals else ("any",))
+
 
     def program(self, items):
         processes = set()
