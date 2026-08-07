@@ -4,8 +4,29 @@ from .models import AggregateGoal, AnyGoal, Process, Query, Quantity, Relational
 
 class RecipeSolver:
     def __init__(self, processes: set[Process], query: Query) -> None:
-        self.processes = sorted(list(processes), key=lambda p: p.name)
         self.query = query
+        
+        filtered_processes = []
+        for p in processes:
+            available = True
+            for required_tool in p.tools:
+                tool_found = False
+                for avail_tool in self.query.tools:
+                    if avail_tool.name == required_tool.name:
+                        try:
+                            converted_avail = avail_tool.quantity.convert_to(required_tool.quantity.unit)
+                            if converted_avail.val >= required_tool.quantity.val:
+                                tool_found = True
+                                break
+                        except ValueError:
+                            pass
+                if not tool_found:
+                    available = False
+                    break
+            if available:
+                filtered_processes.append(p)
+                
+        self.processes = sorted(filtered_processes, key=lambda p: p.name)
         self.basic_resources: dict[str, Resource] = {}
         self.basic_resource_names = self._identify_basic_resources()
         self.final_demands: dict[str, Quantity] = {}
@@ -82,7 +103,7 @@ class RecipeSolver:
 
         proc_map = {p.name: p for p in procs}
         in_degree = {p.name: 0 for p in procs}
-        adj = {p.name: set() for p in procs}
+        adj: dict[str, set[str]] = {p.name: set() for p in procs}
 
         for p2 in procs:
             for _, ingr in p2.inp:
@@ -190,7 +211,7 @@ class RecipeSolver:
                     chosen_proc_names.remove(proc.name)
                     chosen_procs.pop()
 
-        initial_needed = [(None, res) for _, res in self.query.query]
+        initial_needed: list[tuple[Process | None, Resource]] = [(None, res) for _, res in self.query.query]
         search(initial_needed, [], set(), set(), set())
 
         valid_candidates = []
@@ -251,7 +272,7 @@ class RecipeSolver:
             dag_res = dag_basic_resources.get(name)
             global_res = self.basic_resources.get(name)
             if dag_res and dag_res.cost > 0:
-                basic_res = dag_res
+                basic_res: Resource | None = dag_res
             elif global_res and global_res.cost > 0:
                 basic_res = global_res
             else:
