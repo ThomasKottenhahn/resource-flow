@@ -26,6 +26,7 @@ class RecipeSolver:
             if available:
                 filtered_processes.append(p)
                 
+        self._all_processes = sorted(processes, key=lambda p: p.name)
         self.processes = sorted(filtered_processes, key=lambda p: p.name)
         self.basic_resources: dict[str, Resource] = {}
         self.basic_resource_names = self._identify_basic_resources()
@@ -131,7 +132,7 @@ class RecipeSolver:
             return [proc_map[name] for name in sorted_names]
         return None
 
-    def _find_all_candidate_dags(self) -> list[tuple[list[Process], set[str]]]:
+    def _find_all_candidate_dags(self) -> tuple[list[tuple[list[Process], set[str]]], set[str], set[str]]:
         results: list[tuple[list[Process], set[str]]] = []
         seen_keys: set[tuple[str, ...]] = set()
         missing_resources: set[str] = set()
@@ -222,16 +223,35 @@ class RecipeSolver:
             else:
                 cycle_procs.update(p.name for p in procs)
 
-        if not valid_candidates:
-            if cycle_procs:
-                proc_name = sorted(list(cycle_procs))[0]
-                raise ValueError(f"Cycle detected involving process '{proc_name}'")
-            if missing_resources:
-                res_name = sorted(list(missing_resources))[0]
-                raise ValueError(f"No process found to produce non-basic resource '{res_name}'")
-            raise ValueError("No valid recipe graph found for query")
+        return valid_candidates, cycle_procs, missing_resources
 
-        return valid_candidates
+    def _calculate_missing_tools(self, procs: list[Process]) -> dict[str, Quantity]:
+        req_tools: dict[str, Quantity] = {}
+        for p in procs:
+            for t in p.tools:
+                if t.name not in req_tools:
+                    req_tools[t.name] = t.quantity
+                else:
+                    try:
+                        converted = t.quantity.convert_to(req_tools[t.name].unit)
+                        if converted.val > req_tools[t.name].val:
+                            req_tools[t.name] = converted
+                    except ValueError:
+                        pass
+                        
+        missing: dict[str, Quantity] = {}
+        for name, req_qty in req_tools.items():
+            avail_val = 0.0
+            for avail_t in self.query.tools:
+                if avail_t.name == name:
+                    try:
+                        avail_val = avail_t.quantity.convert_to(req_qty.unit).val
+                        break
+                    except ValueError:
+                        pass
+            if avail_val < req_qty.val:
+                missing[name] = Quantity(req_qty.val - avail_val, req_qty.unit)
+        return missing
 
     def _find_producer_in(self, res: Resource, procs: list[Process]) -> Process | None:
         """Find a process in a given list that produces the resource (tag-matched)."""
@@ -391,7 +411,7 @@ class RecipeSolver:
         self.processes_in_dag = []  # reset to re-solve if needed
         self._result_dag = None
 
-        candidates = self._find_all_candidate_dags()
+        candidates, cycle_procs, missing_resources = self._find_all_candidate_dags()
 
         relational_goals = [g for g in self.query.goals if isinstance(g, RelationalGoal)]
         aggregate_goals = [g for g in self.query.goals if not isinstance(g, RelationalGoal)]
@@ -429,6 +449,55 @@ class RecipeSolver:
                 )
 
         if not valid_candidates:
+            if not candidates and len(self.processes) < len(self._all_processes):
+                # Phase 2: Try with all processes to give a better error message about missing tools
+                original_processes = self.processes
+                original_basics = self.basic_resources
+                original_basic_names = self.basic_resource_names
+                
+                self.processes = self._all_processes
+                self.basic_resources = {}
+                self.basic_resource_names = self._identify_basic_resources()
+                
+                p2_candidates, _, _ = self._find_all_candidate_dags()
+                
+                p2_valid = []
+                for procs, basic_reqs in p2_candidates:
+                    proc_scales, demands, surplus, dag_basics = self._solve_dag(procs)
+                    candidate_dag = self._build_dag_from_solution(procs, proc_scales, demands, surplus, dag_basics)
+                    passed_all = True
+                    for g in relational_goals:
+                        if not g.evaluate(candidate_dag):
+                            passed_all = False
+                            break
+                    if passed_all:
+                        missing_tools = self._calculate_missing_tools(procs)
+                        p2_valid.append((missing_tools, procs))
+                        
+                if p2_valid:
+                    # Select candidate needing minimal additional tools (by number of distinct tools)
+                    p2_valid.sort(key=lambda item: len(item[0]))
+                    best_missing = p2_valid[0][0]
+                    tool_names = ", ".join(sorted(best_missing.keys()))
+                    
+                    self.processes = original_processes
+                    self.basic_resources = original_basics
+                    self.basic_resource_names = original_basic_names
+                    
+                    raise ValueError(f"No solution found with available tools. Closest solution requires additional tools: {tool_names}")
+                    
+                # Restore Phase 1 state if Phase 2 yields nothing useful
+                self.processes = original_processes
+                self.basic_resources = original_basics
+                self.basic_resource_names = original_basic_names
+                
+            if not candidates:
+                if cycle_procs:
+                    proc_name = sorted(list(cycle_procs))[0]
+                    raise ValueError(f"Cycle detected involving process '{proc_name}'")
+                if missing_resources:
+                    res_name = sorted(list(missing_resources))[0]
+                    raise ValueError(f"No process found to produce non-basic resource '{res_name}'")
             if closest_info:
                 g, val = closest_info
                 raise ValueError(f"No solution found for {g}. Closest solution found: {g.tag} = {val}")

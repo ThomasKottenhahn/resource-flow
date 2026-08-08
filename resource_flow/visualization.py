@@ -100,6 +100,9 @@ class Visualizer:
             header_params = f"({', '.join(details)})"
             tag_str = f" [{', '.join(sorted(proc.tags))}]" if proc.tags else ""
             print(f"\nStep {i}: {proc.name} {header_params}{tag_str}")
+            if proc.tools:
+                tools_str = ", ".join(str(t) for t in sorted(proc.tools, key=lambda x: x.name))
+                print(f"  Tools: {tools_str}")
             print("  Inputs:")
             for qty, res in proc.inp:
                 scaled_qty = qty * scale
@@ -163,6 +166,9 @@ class Visualizer:
                 node_parts.append(", ".join(proc_metrics))
             if proc.tags:
                 node_parts.append(f"[{', '.join(sorted(proc.tags))}]")
+            if proc.tools:
+                tools_str = "using " + ", ".join(str(t) for t in sorted(proc.tools, key=lambda x: x.name))
+                node_parts.append(tools_str)
             label = "\\n".join(node_parts)
             lines.append(f'    {proc.name}["{label}"]')
 
