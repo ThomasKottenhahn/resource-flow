@@ -9,6 +9,7 @@ from .visualization import Visualizer
 
 
 def main() -> None:
+    """Command-line interface entry point for compiling .rf files and outputting the solved plan."""
     parser = argparse.ArgumentParser(
         description="Resource Flow Compiler - compiles resource recipes and resolves DAG scales."
     )

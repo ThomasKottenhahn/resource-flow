@@ -28,6 +28,7 @@ class Visualizer:
     # ------------------------------------------------------------------
 
     def _format_resource_tags(self, res: Resource | None) -> str:
+        """Format a resource's tags into a string representation for display."""
         if res is None:
             return ""
         other_tags = sorted([t for t in res.tags if t != "basic"])
@@ -49,6 +50,7 @@ class Visualizer:
         return None
 
     def _basic_resource_names(self) -> set[str]:
+        """Extract the names of all basic resources utilized in the DAG."""
         return {
             edge.resource.name
             for edge in self.dag.edges
@@ -56,6 +58,7 @@ class Visualizer:
         }
 
     def _matches_tags(self, required: Resource, provided: Resource) -> bool:
+        """Check if a provided resource satisfies the required resource's tags."""
         req_tags = required.tags - {"basic"}
         prov_tags = provided.tags - {"basic"}
         if not req_tags.issubset(prov_tags):
@@ -69,6 +72,7 @@ class Visualizer:
     # ------------------------------------------------------------------
 
     def get_metrics(self, time_unit: str = "min") -> dict[str, float | str]:
+        """Calculate and return a summary of cost and time metrics for the resolved DAG."""
         res_cost = 0.0
         for name, qty in self.demands.items():
             res = self.basic_resources.get(name)
@@ -85,6 +89,7 @@ class Visualizer:
         }
 
     def print_plan(self, time_unit: str = "min") -> None:
+        """Print the complete step-by-step execution plan to the console."""
         processes = self.dag.processes
         process_scales = self.dag.process_scales
 
@@ -148,6 +153,7 @@ class Visualizer:
         print("=======================\n")
 
     def generate_mermaid(self, time_unit: str = "min") -> str:
+        """Generate a Mermaid flowchart visualizing the solved resource flow."""
         processes = self.dag.processes
         process_scales = self.dag.process_scales
         basic_reqs = self._basic_resource_names()

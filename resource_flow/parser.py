@@ -4,13 +4,17 @@ from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Res
 
 
 class RecipeTransformer(Transformer):
+    """Transforms the parsed syntax tree into domain models."""
     def min_goal(self, items):
+        """Parse a minimize goal."""
         return ("min_goal", str(items[0]))
 
     def max_goal(self, items):
+        """Parse a maximize goal."""
         return ("max_goal", str(items[0]))
 
     def rel_goal(self, items):
+        """Parse a relational constraint goal."""
         tag = str(items[0])
         op = str(items[1])
         val = float(items[2])
@@ -18,21 +22,26 @@ class RecipeTransformer(Transformer):
         return ("rel_goal", tag, op, val, unit)
 
     def negated_tag(self, items):
+        """Parse a negated tag."""
         return ("negated", str(items[0]))
 
     def flag_tag(self, items):
+        """Parse a boolean flag tag."""
         return ("flag", str(items[0]))
 
     def kv_tag(self, items):
+        """Parse a key-value tag."""
         key = str(items[0])
         val = float(items[1])
         unit = str(items[2]) if len(items) == 3 and items[2] is not None else None
         return ("kv", key, val, unit)
 
     def tags(self, items):
+        """Return a list of parsed tags."""
         return list(items)
 
     def resource(self, items):
+        """Parse a resource and its quantity."""
         val = float(items[0])
         unit = str(items[1])
         name = str(items[2])
@@ -98,12 +107,15 @@ class RecipeTransformer(Transformer):
         )
 
     def multiset(self, items):
+        """Parse a multiset of resources."""
         return set(items)
 
     def label(self, items):
+        """Parse a label."""
         return str(items[0])
 
     def proc_header(self, items):
+        """Parse a process header including name and tags."""
         if len(items) == 2:
             return str(items[0]), items[1]
         elif isinstance(items[0], list):
@@ -112,9 +124,11 @@ class RecipeTransformer(Transformer):
             return str(items[0]), []
 
     def name(self, items):
+        """Parse a multi-word name."""
         return " ".join(str(i) for i in items)
 
     def tool(self, items):
+        """Parse a tool requirement."""
         if len(items) == 1:
             qty_val = 1.0
             unit = "piece"
@@ -134,12 +148,15 @@ class RecipeTransformer(Transformer):
         return Tool(str(name), Quantity(qty_val, unit))
 
     def tool_clause(self, items):
+        """Parse a 'with tools' clause for processes."""
         return set(items)
 
     def using_clause(self, items):
+        """Parse a 'using tools' clause for queries."""
         return set(items)
 
     def transition(self, items):
+        """Parse a process transition (inputs -> outputs)."""
         name = ""
         parsed_tags = []
         inp = None
@@ -201,6 +218,7 @@ class RecipeTransformer(Transformer):
         )
 
     def query(self, items):
+        """Parse a query instruction."""
         multiset = set()
         parsed_tags = []
         using = set()
@@ -245,6 +263,7 @@ class RecipeTransformer(Transformer):
 
 
     def program(self, items):
+        """Parse a complete resource flow program."""
         processes = set()
         queries = []
         resources = set()
@@ -267,6 +286,7 @@ class RecipeTransformer(Transformer):
 
 
 class RecipeParser:
+    """Parses a Resource Flow DSL file into domain models using Lark."""
     def __init__(self, grammar_path: str | None = None) -> None:
         if grammar_path is None:
             grammar_path = str(Path(__file__).parent / "lang.lark")
@@ -274,6 +294,7 @@ class RecipeParser:
         self.lark = Lark(grammar, start="program")
 
     def parse_file(self, file_path: str) -> tuple[set[Resource], set[Process], Query]:
+        """Parse a DSL file and return all discovered resources, processes, and the combined query."""
         content = Path(file_path).read_text(encoding="utf-8")
         tree = self.lark.parse(content)
         return RecipeTransformer().transform(tree)

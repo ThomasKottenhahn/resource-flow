@@ -448,9 +448,3 @@ def test_basic_resource_cost_isolation(tmp_path):
     dag = solver.solve()
 
     assert dag.calculate_metric("cost") == 2.0
-
-
-
-
-
-
