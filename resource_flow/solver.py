@@ -1,6 +1,6 @@
 from .dag import DAG, DAGEdge, DAGNode
 from .models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource
-
+from typing import Any
 
 class RecipeSolver:
     def __init__(self, processes: set[Process], query: Query) -> None:
@@ -544,10 +544,10 @@ class RecipeSolver:
             return f" [{', '.join(all_tags)}]"
         return ""
 
-    def print_plan(self, process_scales: dict[str, float], time_unit: str = "min") -> None:
+    def print_plan(self, process_scales: Any, time_unit: str = "min") -> None:
         self._get_visualizer().print_plan(time_unit=time_unit)
 
-    def generate_mermaid(self, process_scales: dict[str, float], time_unit: str = "min") -> str:
+    def generate_mermaid(self, process_scales: Any, time_unit: str = "min") -> str:
         return self._get_visualizer().generate_mermaid(time_unit=time_unit)
 
     def calculate_resource_costs(self) -> float:

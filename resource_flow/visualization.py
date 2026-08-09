@@ -37,7 +37,7 @@ class Visualizer:
             return f" [{', '.join(all_tags)}]"
         return ""
 
-    def _find_source_process(self, res: Resource, consumer: Process) -> Process | None:
+    def _find_source_process(self, res: Resource, consumer: Process | str) -> Process | None:
         """Return the process node in the DAG that produces the given resource for the consumer."""
         for edge in self.dag.edges:
             if (
@@ -130,11 +130,11 @@ class Visualizer:
 
         print("\n=== TOTAL BASIC RESOURCES REQUIRED ===")
         for name, qty in sorted(self.demands.items()):
-            res = self.basic_resources.get(name)
-            res_tags_str = self._format_resource_tags(res)
+            basic_res = self.basic_resources.get(name)
+            res_tags_str = self._format_resource_tags(basic_res)
             cost_str = ""
-            if res and res.cost > 0:
-                cost_val = res.calculate_cost(qty)
+            if basic_res and basic_res.cost > 0:
+                cost_val = basic_res.calculate_cost(qty)
                 cost_str = f" (Cost: {cost_val:.2f})"
             print(f"- {qty.val:.2f} {qty.unit} {name}{res_tags_str}{cost_str}")
         print("======================================\n")
@@ -220,7 +220,7 @@ class Visualizer:
                     )
 
         for q_qty, q_res in sorted(self.query.query, key=lambda item: item[1].name):
-            source = self._find_source_process(q_res, q_res)  # no consumer for query targets
+            source = self._find_source_process(q_res, "Query")  # no consumer for query targets
             if q_res.basic or source is None:
                 # check if any process in dag produces this
                 produced_by_dag = any(
