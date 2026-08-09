@@ -406,16 +406,7 @@ class RecipeSolver:
         self.solve()
         return self.processes_in_dag, self.basic_requirements
 
-    def solve(self) -> DAG:
-        """Search candidate DAGs, evaluate goals, return the optimal result DAG."""
-        self.processes_in_dag = []  # reset to re-solve if needed
-        self._result_dag = None
-
-        candidates, cycle_procs, missing_resources = self._find_all_candidate_dags()
-
-        relational_goals = [g for g in self.query.goals if isinstance(g, RelationalGoal)]
-        aggregate_goals = [g for g in self.query.goals if not isinstance(g, RelationalGoal)]
-
+    def _evaluate_candidates(self, candidates, relational_goals, aggregate_goals):
         valid_candidates = []
         closest_diff = float("inf")
         closest_info = None
@@ -448,48 +439,55 @@ class RecipeSolver:
                     (scores, tie_breaker, procs, basic_reqs, proc_scales, demands, surplus, dag_basics, candidate_dag)
                 )
 
+        return valid_candidates, closest_info
+
+    def _run_phase2_fallback(self, relational_goals) -> None:
+        """Phase 2: Try with all processes to give a better error message about missing tools."""
+        original_processes = self.processes
+        original_basics = self.basic_resources
+        original_basic_names = self.basic_resource_names
+        
+        self.processes = self._all_processes
+        self.basic_resources = {}
+        self.basic_resource_names = self._identify_basic_resources()
+        
+        try:
+            p2_candidates, _, _ = self._find_all_candidate_dags()
+            p2_valid_candidates, _ = self._evaluate_candidates(p2_candidates, relational_goals, [])
+            
+            if p2_valid_candidates:
+                p2_valid = []
+                for item in p2_valid_candidates:
+                    procs = item[2]
+                    missing_tools = self._calculate_missing_tools(procs)
+                    p2_valid.append((missing_tools, procs))
+                
+                # Select candidate needing minimal additional tools (by number of distinct tools)
+                p2_valid.sort(key=lambda item: len(item[0]))
+                best_missing = p2_valid[0][0]
+                tool_names = ", ".join(sorted(best_missing.keys()))
+                
+                raise ValueError(f"No solution found with available tools. Closest solution requires additional tools: {tool_names}")
+        finally:
+            self.processes = original_processes
+            self.basic_resources = original_basics
+            self.basic_resource_names = original_basic_names
+
+    def solve(self) -> DAG:
+        """Search candidate DAGs, evaluate goals, return the optimal result DAG."""
+        self.processes_in_dag = []  # reset to re-solve if needed
+        self._result_dag = None
+
+        candidates, cycle_procs, missing_resources = self._find_all_candidate_dags()
+
+        relational_goals = [g for g in self.query.goals if isinstance(g, RelationalGoal)]
+        aggregate_goals = [g for g in self.query.goals if not isinstance(g, RelationalGoal)]
+
+        valid_candidates, closest_info = self._evaluate_candidates(candidates, relational_goals, aggregate_goals)
+
         if not valid_candidates:
             if not candidates and len(self.processes) < len(self._all_processes):
-                # Phase 2: Try with all processes to give a better error message about missing tools
-                original_processes = self.processes
-                original_basics = self.basic_resources
-                original_basic_names = self.basic_resource_names
-                
-                self.processes = self._all_processes
-                self.basic_resources = {}
-                self.basic_resource_names = self._identify_basic_resources()
-                
-                p2_candidates, _, _ = self._find_all_candidate_dags()
-                
-                p2_valid = []
-                for procs, basic_reqs in p2_candidates:
-                    proc_scales, demands, surplus, dag_basics = self._solve_dag(procs)
-                    candidate_dag = self._build_dag_from_solution(procs, proc_scales, demands, surplus, dag_basics)
-                    passed_all = True
-                    for g in relational_goals:
-                        if not g.evaluate(candidate_dag):
-                            passed_all = False
-                            break
-                    if passed_all:
-                        missing_tools = self._calculate_missing_tools(procs)
-                        p2_valid.append((missing_tools, procs))
-                        
-                if p2_valid:
-                    # Select candidate needing minimal additional tools (by number of distinct tools)
-                    p2_valid.sort(key=lambda item: len(item[0]))
-                    best_missing = p2_valid[0][0]
-                    tool_names = ", ".join(sorted(best_missing.keys()))
-                    
-                    self.processes = original_processes
-                    self.basic_resources = original_basics
-                    self.basic_resource_names = original_basic_names
-                    
-                    raise ValueError(f"No solution found with available tools. Closest solution requires additional tools: {tool_names}")
-                    
-                # Restore Phase 1 state if Phase 2 yields nothing useful
-                self.processes = original_processes
-                self.basic_resources = original_basics
-                self.basic_resource_names = original_basic_names
+                self._run_phase2_fallback(relational_goals)
                 
             if not candidates:
                 if cycle_procs:
