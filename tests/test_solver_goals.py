@@ -181,10 +181,13 @@ def test_solver_goal_extensibility():
     query = Query({(Quantity(1, "kg"), res_out)})
     solver = RecipeSolver({proc}, query)
 
+    dag = solver.solve()
+
     # Built-in evaluation checks
-    cost_val = solver.evaluate_goal({"proc": 1.0}, {"A": Quantity(1, "kg")}, {"A": res_a}, [proc], "cheapest")
-    time_val = solver.evaluate_goal({"proc": 1.0}, {"A": Quantity(1, "kg")}, {"A": res_a}, [proc], "fastest")
-    any_val = solver.evaluate_goal({"proc": 1.0}, {"A": Quantity(1, "kg")}, {"A": res_a}, [proc], "any")
+    from resource_flow.models import AggregateGoal, AnyGoal
+    cost_val = AggregateGoal("min", "cost").evaluate(dag)
+    time_val = AggregateGoal("min", "time").evaluate(dag)
+    any_val = AnyGoal().evaluate(dag)
 
     assert cost_val == 10.0
     assert time_val == 15.0
@@ -206,13 +209,11 @@ def test_solver_goal_basic_vs_process_cost_comparison(tmp_path):
 
     solver = RecipeSolver(processes, query)
     scales = solver.solve()
-
     # Mixing batter costs ~5.75 total vs buying pre-made batter @ 15.64 total.
     # [cheapest] must select mix_batter!
     assert "mix_batter" in scales
     assert "fry" in scales
-    metrics = solver.get_metrics(scales)
-    assert metrics["total_cost"] == pytest.approx(5.75, abs=0.01)
+    assert scales.calculate_metric("cost") == pytest.approx(5.75, abs=0.01)
 
 
 def test_solver_goal_aggregate_custom_metrics(tmp_path):

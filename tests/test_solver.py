@@ -137,8 +137,10 @@ def test_solver_mermaid_generation():
     query = Query({(Quantity(1, "piece"), bread)})
 
     solver = RecipeSolver({bake}, query)
-    scales = solver.solve()
-    mermaid_str = solver.generate_mermaid(scales)
+    dag = solver.solve()
+    from resource_flow.visualization import Visualizer
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+    mermaid_str = viz.generate_mermaid()
     
     assert "graph TD" in mermaid_str
     assert "bake" in mermaid_str
@@ -229,27 +231,16 @@ def test_solver_metric_aggregation():
     query = Query({(Quantity(2, "l"), res_soup)})
 
     solver = RecipeSolver({p_prep, p_cook}, query)
-    scales = solver.solve()
+    dag = solver.solve()
 
     # Scale factor for both processes is 2.0
-    assert scales["cook"] == 2.0
-    assert scales["prep"] == 2.0
+    assert dag["cook"] == 2.0
+    assert dag["prep"] == 2.0
 
-    # Demands: 1000g carrots @ 0.50 = 500.0, 2l (2000ml) water @ 0.02 = 40.0
-    # Total resource cost = 540.0
-    res_cost = solver.calculate_resource_costs()
-    assert res_cost == pytest.approx(540.0)
+    from resource_flow.visualization import Visualizer
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+    metrics = viz.get_metrics(time_unit="min")
 
-    # Process costs: prep = 1.50 * 2 = 3.0, cook = 4.00 * 2 = 8.0 -> Total = 11.0
-    proc_cost = solver.calculate_process_costs(scales)
-    assert proc_cost == pytest.approx(11.0)
-
-    # Process time: prep = 10 min * 2 = 20 min; cook = 0.5 h (30 min) * 2 = 60 min -> Total = 80 min
-    proc_time_min = solver.calculate_process_time(scales, target_unit="min")
-    assert proc_time_min == pytest.approx(80.0)
-
-    # Get metrics dict
-    metrics = solver.get_metrics(scales, time_unit="min")
     assert metrics["resource_cost"] == pytest.approx(540.0)
     assert metrics["process_cost"] == pytest.approx(11.0)
     assert metrics["total_cost"] == pytest.approx(551.0)
@@ -270,12 +261,14 @@ def test_solver_batch_cost_unit_conversion(tmp_path):
     resources, processes, query = parser.parse_file(str(recipe_file))
 
     solver = RecipeSolver(processes, query)
-    scales = solver.solve()
+    dag = solver.solve()
 
-    assert scales["peel"] == 6.0
+    assert dag["peel"] == 6.0
     # Demanded carrots: 6.0 * 300g = 1800g = 1.8 kg
     # Cost: 1800g * (20.00 / 300g) = 120.00
-    res_cost = solver.calculate_resource_costs()
+    from resource_flow.visualization import Visualizer
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+    res_cost = viz.get_metrics()["resource_cost"]
     assert res_cost == pytest.approx(120.00)
 
 
@@ -289,10 +282,12 @@ def test_solver_dimension_mismatch_error():
     query = Query({(Quantity(100, "g"), Resource("peeled_carrots"))})
 
     solver = RecipeSolver({p_peel}, query)
-    solver.solve()
+    dag = solver.solve()
 
+    from resource_flow.visualization import Visualizer
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
     with pytest.raises(ValueError, match="Cannot convert unit"):
-        solver.calculate_resource_costs()
+        viz.get_metrics()
 
 
 def test_solver_print_plan_formatting(capsys):
@@ -320,9 +315,11 @@ def test_solver_print_plan_formatting(capsys):
 
     query = Query({(Quantity(2, "l"), res_soup)})
     solver = RecipeSolver({p_prep, p_cook}, query)
-    scales = solver.solve()
+    dag = solver.solve()
 
-    solver.print_plan(scales, time_unit="min")
+    from resource_flow.visualization import Visualizer
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+    viz.print_plan(time_unit="min")
     captured = capsys.readouterr().out
 
     # Step headers format
@@ -369,9 +366,11 @@ def test_solver_generate_mermaid_reporting():
 
     query = Query({(Quantity(2, "l"), res_soup)})
     solver = RecipeSolver({p_prep, p_cook}, query)
-    scales = solver.solve()
+    dag = solver.solve()
 
-    mermaid_str = solver.generate_mermaid(scales, time_unit="min")
+    from resource_flow.visualization import Visualizer
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+    mermaid_str = viz.generate_mermaid(time_unit="min")
 
     # Process nodes with cost, time, and tags
     assert 'prep["prep (x2.00)\\nCost: 3.00, Time: 20.00 min\\n[manual]"]' in mermaid_str
@@ -410,8 +409,10 @@ def test_solver_tagged_resource_and_multi_query_graph_edges(tmp_path):
     _, processes, query = parser.parse_file(str(recipe_file))
 
     solver = RecipeSolver(processes, query)
-    scales = solver.solve()
-    mermaid_str = solver.generate_mermaid(scales)
+    dag = solver.solve()
+    from resource_flow.visualization import Visualizer
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+    mermaid_str = viz.generate_mermaid()
 
     # Edge from plain onions to cut_onions
     assert 'basic_onions -->|"66.67 g onions"| cut_onions' in mermaid_str
@@ -446,8 +447,6 @@ def test_basic_resource_cost_isolation(tmp_path):
     solver = RecipeSolver(procs, q)
     dag = solver.solve()
 
-    metrics = solver.get_metrics(dag.process_scales)
-    assert metrics["resource_cost"] == 2.0
     assert dag.calculate_metric("cost") == 2.0
 
 
