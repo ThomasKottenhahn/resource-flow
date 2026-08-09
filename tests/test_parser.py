@@ -200,6 +200,29 @@ def test_parse_general_goals(tmp_path):
     )
 
 
+def test_parser_tools(tmp_path):
+    from resource_flow.models import Tool
+    recipe_content = """
+    cut: 500 g carrots * -> 450 g carrots [cut] with knife, 2 piece clamp;
+    make 1 kg cake using knife, oven, 2 oven_mits;
+    """
+    recipe_file = tmp_path / "test_tools.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
 
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
 
-
+    assert len(processes) == 1
+    proc = list(processes)[0]
+    assert proc.name == "cut"
+    
+    assert proc.tools == frozenset({
+        Tool("knife", Quantity(1.0, "piece")),
+        Tool("clamp", Quantity(2.0, "piece"))
+    })
+    
+    assert query.tools == frozenset({
+        Tool("knife", Quantity(1.0, "piece")),
+        Tool("oven", Quantity(1.0, "piece")),
+        Tool("oven_mits", Quantity(2.0, "piece"))
+    })

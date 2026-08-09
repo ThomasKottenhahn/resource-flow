@@ -28,6 +28,7 @@ class Visualizer:
     # ------------------------------------------------------------------
 
     def _format_resource_tags(self, res: Resource | None) -> str:
+        """Format a resource's tags into a string representation for display."""
         if res is None:
             return ""
         other_tags = sorted([t for t in res.tags if t != "basic"])
@@ -37,7 +38,7 @@ class Visualizer:
             return f" [{', '.join(all_tags)}]"
         return ""
 
-    def _find_source_process(self, res: Resource, consumer: Process) -> Process | None:
+    def _find_source_process(self, res: Resource, consumer: Process | str) -> Process | None:
         """Return the process node in the DAG that produces the given resource for the consumer."""
         for edge in self.dag.edges:
             if (
@@ -49,6 +50,7 @@ class Visualizer:
         return None
 
     def _basic_resource_names(self) -> set[str]:
+        """Extract the names of all basic resources utilized in the DAG."""
         return {
             edge.resource.name
             for edge in self.dag.edges
@@ -56,6 +58,7 @@ class Visualizer:
         }
 
     def _matches_tags(self, required: Resource, provided: Resource) -> bool:
+        """Check if a provided resource satisfies the required resource's tags."""
         req_tags = required.tags - {"basic"}
         prov_tags = provided.tags - {"basic"}
         if not req_tags.issubset(prov_tags):
@@ -69,6 +72,7 @@ class Visualizer:
     # ------------------------------------------------------------------
 
     def get_metrics(self, time_unit: str = "min") -> dict[str, float | str]:
+        """Calculate and return a summary of cost and time metrics for the resolved DAG."""
         res_cost = 0.0
         for name, qty in self.demands.items():
             res = self.basic_resources.get(name)
@@ -85,6 +89,7 @@ class Visualizer:
         }
 
     def print_plan(self, time_unit: str = "min") -> None:
+        """Print the complete step-by-step execution plan to the console."""
         processes = self.dag.processes
         process_scales = self.dag.process_scales
 
@@ -100,6 +105,9 @@ class Visualizer:
             header_params = f"({', '.join(details)})"
             tag_str = f" [{', '.join(sorted(proc.tags))}]" if proc.tags else ""
             print(f"\nStep {i}: {proc.name} {header_params}{tag_str}")
+            if proc.tools:
+                tools_str = ", ".join(str(t) for t in sorted(proc.tools, key=lambda x: x.name))
+                print(f"  Tools: {tools_str}")
             print("  Inputs:")
             for qty, res in proc.inp:
                 scaled_qty = qty * scale
@@ -127,11 +135,11 @@ class Visualizer:
 
         print("\n=== TOTAL BASIC RESOURCES REQUIRED ===")
         for name, qty in sorted(self.demands.items()):
-            res = self.basic_resources.get(name)
-            res_tags_str = self._format_resource_tags(res)
+            basic_res = self.basic_resources.get(name)
+            res_tags_str = self._format_resource_tags(basic_res)
             cost_str = ""
-            if res and res.cost > 0:
-                cost_val = res.calculate_cost(qty)
+            if basic_res and basic_res.cost > 0:
+                cost_val = basic_res.calculate_cost(qty)
                 cost_str = f" (Cost: {cost_val:.2f})"
             print(f"- {qty.val:.2f} {qty.unit} {name}{res_tags_str}{cost_str}")
         print("======================================\n")
@@ -145,6 +153,7 @@ class Visualizer:
         print("=======================\n")
 
     def generate_mermaid(self, time_unit: str = "min") -> str:
+        """Generate a Mermaid flowchart visualizing the solved resource flow."""
         processes = self.dag.processes
         process_scales = self.dag.process_scales
         basic_reqs = self._basic_resource_names()
@@ -163,6 +172,9 @@ class Visualizer:
                 node_parts.append(", ".join(proc_metrics))
             if proc.tags:
                 node_parts.append(f"[{', '.join(sorted(proc.tags))}]")
+            if proc.tools:
+                tools_str = "using " + ", ".join(str(t) for t in sorted(proc.tools, key=lambda x: x.name))
+                node_parts.append(tools_str)
             label = "\\n".join(node_parts)
             lines.append(f'    {proc.name}["{label}"]')
 
@@ -214,7 +226,7 @@ class Visualizer:
                     )
 
         for q_qty, q_res in sorted(self.query.query, key=lambda item: item[1].name):
-            source = self._find_source_process(q_res, q_res)  # no consumer for query targets
+            source = self._find_source_process(q_res, "Query")  # no consumer for query targets
             if q_res.basic or source is None:
                 # check if any process in dag produces this
                 produced_by_dag = any(

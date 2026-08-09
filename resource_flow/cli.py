@@ -5,9 +5,11 @@ from pathlib import Path
 import sys
 from .parser import RecipeParser
 from .solver import RecipeSolver
+from .visualization import Visualizer
 
 
 def main() -> None:
+    """Command-line interface entry point for compiling .rf files and outputting the solved plan."""
     parser = argparse.ArgumentParser(
         description="Resource Flow Compiler - compiles resource recipes and resolves DAG scales."
     )
@@ -30,13 +32,14 @@ def main() -> None:
         _, processes, query = recipe_parser.parse_file(args.input)
 
         solver = RecipeSolver(processes, query)
-        scales = solver.solve()
-        mermaid_text = solver.generate_mermaid(scales, time_unit=args.time_unit)
+        dag = solver.solve()
+        viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+        mermaid_text = viz.generate_mermaid(time_unit=args.time_unit)
 
         if args.output:
             plan_stream = io.StringIO()
             with redirect_stdout(plan_stream):
-                solver.print_plan(scales, time_unit=args.time_unit)
+                viz.print_plan(time_unit=args.time_unit)
             plan_text = plan_stream.getvalue()
 
             output_path = Path(args.output)
@@ -64,7 +67,7 @@ def main() -> None:
             print("\n------------------------------------------------")
             print("Solving Recipe...")
             print("------------------------------------------------")
-            solver.print_plan(scales, time_unit=args.time_unit)
+            viz.print_plan(time_unit=args.time_unit)
             print("Mermaid Visualization:")
             print(mermaid_text)
             print("------------------------------------------------\n")

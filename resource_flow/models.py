@@ -1,7 +1,12 @@
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .dag import DAG
 
 
 class Resource:
+    """Represents a tangible resource, either required or produced in the system."""
     def __init__(
         self,
         name: str,
@@ -27,9 +32,11 @@ class Resource:
 
     @property
     def basic(self) -> bool:
+        """Return True if this resource is basic (externally supplied)."""
         return "basic" in self.tags
 
     def calculate_cost(self, qty: "Quantity") -> float:
+        """Calculate the total cost of this resource for a given quantity."""
         if self.cost <= 0:
             return 0.0
         if self.cost_unit:
@@ -69,8 +76,8 @@ class Resource:
         )
 
 
-
 class Quantity:
+    """Represents a numeric value associated with a unit of measurement."""
     def __init__(self, val: float, unit: str) -> None:
         self.val = val
         self.unit = unit
@@ -87,6 +94,7 @@ class Quantity:
         return hash((self.val, self.unit))
 
     def convert_to(self, target_unit: str) -> "Quantity":
+        """Convert this quantity to a target unit, raising ValueError if units are incompatible."""
         if self.unit == target_unit:
             return Quantity(self.val, target_unit)
 
@@ -113,6 +121,7 @@ class Quantity:
         raise ValueError(f"Cannot convert unit '{self.unit}' to '{target_unit}'")
 
     def to_base_unit(self) -> "Quantity":
+        """Convert this quantity to its canonical base unit (e.g., kg -> g)."""
         weight_units = {"mg": "g", "g": "g", "kg": "g"}
         if self.unit in weight_units:
             return self.convert_to("g")
@@ -156,7 +165,26 @@ class Quantity:
         return self.__mul__(factor)
 
 
+class Tool:
+    """Represents a non-consumable tool or equipment required by a process."""
+    def __init__(self, name: str, quantity: Quantity) -> None:
+        self.name = name
+        self.quantity = quantity
+
+    def __repr__(self) -> str:
+        return f"{self.quantity} {self.name}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Tool):
+            return False
+        return self.name == other.name and self.quantity == other.quantity
+
+    def __hash__(self) -> int:
+        return hash((self.name, self.quantity))
+
+
 class Process:
+    """Represents a production process transforming input resources into output resources."""
     def __init__(
         self,
         name: str,
@@ -166,6 +194,7 @@ class Process:
         time: float = 0.0,
         time_unit: str = "min",
         tags: set[str] | frozenset[str] | None = None,
+        tools: set["Tool"] | frozenset["Tool"] | None = None,
     ) -> None:
         self.name = name
         self.inp = inp
@@ -174,6 +203,7 @@ class Process:
         self.time = float(time)
         self.time_unit = time_unit
         self.tags = frozenset(tags) if tags else frozenset()
+        self.tools = frozenset(tools) if tools else frozenset()
 
     def __repr__(self) -> str:
         tag_strs = [t for t in sorted(self.tags)]
@@ -184,15 +214,33 @@ class Process:
         metrics_str = f" [{', '.join(tag_strs)}]" if tag_strs else ""
         return f"{self.name}{metrics_str}: {self.inp} -> {self.out}"
 
-
+    def has_required_tools(self, available_tools: frozenset["Tool"] | set["Tool"]) -> bool:
+        """Check if the given available tools satisfy this process's tool requirements."""
+        for required_tool in self.tools:
+            tool_found = False
+            for avail_tool in available_tools:
+                if avail_tool.name == required_tool.name:
+                    try:
+                        converted_avail = avail_tool.quantity.convert_to(required_tool.quantity.unit)
+                        if converted_avail.val >= required_tool.quantity.val:
+                            tool_found = True
+                            break
+                    except ValueError:
+                        pass
+            if not tool_found:
+                return False
+        return True
 
 
 class Goal:
+    """Abstract base class for optimization or constraint goals."""
     def evaluate(self, dag: Any) -> float | bool:
+        """Evaluate the goal against a resolved DAG."""
         raise NotImplementedError
 
 
 class AggregateGoal(Goal):
+    """Represents an optimization goal (e.g., minimize cost)."""
     def __init__(self, op: str, tag: str) -> None:
         self.op = op.lower()
         self.tag = tag
@@ -220,6 +268,7 @@ class AggregateGoal(Goal):
 
 
 class RelationalGoal(Goal):
+    """Represents a hard constraint goal (e.g., time <= 30 min)."""
     def __init__(self, tag: str, op: str, val: float, unit: str | None = None) -> None:
         self.tag = tag
         self.op = op
@@ -266,6 +315,7 @@ class RelationalGoal(Goal):
 
 
 class AnyGoal(Goal):
+    """Represents a wildcard goal that accepts any valid solution."""
     def evaluate(self, dag: Any) -> float:
         return 0.0
 
@@ -285,12 +335,15 @@ GoalType = Goal | str
 
 
 class Query:
+    """Represents the end goal or target of a resource flow solver query."""
     def __init__(
         self,
         query: set[tuple[Quantity, Resource]],
         goals: tuple[GoalType, ...] | list[GoalType] | None = None,
+        tools: set["Tool"] | frozenset["Tool"] | None = None,
     ) -> None:
         self.query = query
+        self.tools = frozenset(tools) if tools else frozenset()
         normalized: list[Goal] = []
         if goals:
             for g in goals:
@@ -313,9 +366,51 @@ class Query:
         return f"Query{goal_str} for: {self.query}"
 
     def add(self, other: "Query") -> None:
+        """Merge another query's requirements and tools into this one."""
         self.query = self.query | other.query
+        self.tools = self.tools | other.tools
         if other.goals != (AnyGoal(),):
             self.goals = other.goals
 
+    def calculate_missing_tools(self, processes: list["Process"]) -> dict[str, Quantity]:
+        """Determine which tools required by the given processes are missing from this query's available tools."""
+        req_tools: dict[str, Quantity] = {}
+        for p in processes:
+            for t in p.tools:
+                if t.name not in req_tools:
+                    req_tools[t.name] = t.quantity
+                else:
+                    try:
+                        converted = t.quantity.convert_to(req_tools[t.name].unit)
+                        if converted.val > req_tools[t.name].val:
+                            req_tools[t.name] = converted
+                    except ValueError:
+                        pass
+                        
+        missing: dict[str, Quantity] = {}
+        for name, req_qty in req_tools.items():
+            avail_val = 0.0
+            for avail_t in self.tools:
+                if avail_t.name == name:
+                    try:
+                        avail_val = avail_t.quantity.convert_to(req_qty.unit).val
+                        break
+                    except ValueError:
+                        pass
+            if avail_val < req_qty.val:
+                missing[name] = Quantity(req_qty.val - avail_val, req_qty.unit)
+        return missing
 
 
+@dataclass
+class SolutionCandidate:
+    """Encapsulates the state of a potential graph solution during the solving pipeline."""
+    processes: list[Process]
+    basic_requirements: set[str]
+    scales: dict[str, float] = field(default_factory=dict)
+    demands: dict[str, Quantity] = field(default_factory=dict)
+    surplus: dict[str, Quantity] = field(default_factory=dict)
+    dag_basic_resources: dict[str, Resource] = field(default_factory=dict)
+    dag: "DAG | None" = None
+    scores: tuple[Any, ...] = ()
+    tie_breaker: tuple[str, ...] = ()

@@ -29,6 +29,24 @@ boil_water: 1000 ml water * -> 1000 ml boiled_water;
 
 ---
 
+## Tools
+
+Processes can require tools that are not consumed during the process. These are specified using the `with` keyword at the end of a process definition.
+
+```text
+cut: 500 g carrots * -> 450 g cut_carrots with 1 knife;
+```
+
+When writing a query, you can declare which tools are available `using`:
+
+```text
+make 450 g cut_carrots using 1 knife;
+```
+
+Tools do not flow through the graph as resources do. If a query requires multiple processes that share the same tool, a single instance of that tool satisfies all processes simultaneously.
+
+---
+
 ## Cost, Time and Tags
 
 Resources an processes can be tagged to reflect certain properties.

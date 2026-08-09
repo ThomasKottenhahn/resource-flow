@@ -3,6 +3,8 @@ from .models import Process, Quantity, Resource
 
 
 class DAGNode:
+    """Represents a process node within the resolved Directed Acyclic Graph (DAG."""
+    
     def __init__(self, process: Process, scale: float = 1.0) -> None:
         self.process = process
         self.scale = float(scale)
@@ -12,6 +14,8 @@ class DAGNode:
 
 
 class DAGEdge:
+    """Represents a resource flow edge between nodes in the DAG."""
+    
     def __init__(
         self,
         source: Process | str | None,
@@ -31,6 +35,8 @@ class DAGEdge:
 
 
 class DAG:
+    """A Directed Acyclic Graph representing the fully resolved production plan."""
+    
     def __init__(
         self,
         nodes: list[DAGNode] | None = None,
@@ -41,10 +47,12 @@ class DAG:
 
     @property
     def processes(self) -> list[Process]:
+        """Return a list of all processes in the DAG."""
         return [n.process for n in self.nodes]
 
     @property
     def process_scales(self) -> dict[str, float]:
+        """Return a mapping of process names to their scale factors."""
         return {n.process.name: n.scale for n in self.nodes}
 
     # Backward-compat dict-like interface so existing code using solve() result
@@ -59,9 +67,11 @@ class DAG:
         return iter(self.process_scales)
 
     def _is_basic_edge(self, edge: DAGEdge) -> bool:
+        """Check if an edge represents a basic resource input."""
         return edge.source is None or isinstance(edge.source, str) or edge.resource.basic
 
     def calculate_metric(self, tag: str, unit: str | None = None) -> float:
+        """Calculate the total value of a specific tag metric across the entire DAG."""
         if tag == "cost":
             res_cost = 0.0
             for edge in self.edges:
