@@ -12,7 +12,7 @@ def _make_simple_dag():
     iron_ingot = Resource("iron_ingot")
 
     smelt = Process(
-        name="smelt",
+        original_label="smelt",
         inp={(Quantity(2.0, "kg"), iron_ore)},
         out={(Quantity(1.0, "kg"), iron_ingot)},
         cost=10.0,
@@ -100,7 +100,7 @@ def test_visualizer_with_tools():
     iron_ingot = Resource("iron_ingot")
 
     smelt = Process(
-        name="smelt",
+        original_label="smelt",
         inp={(Quantity(2.0, "kg"), iron_ore)},
         out={(Quantity(1.0, "kg"), iron_ingot)},
         tools={Tool("furnace", Quantity(1.0, "piece"))},

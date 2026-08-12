@@ -104,7 +104,7 @@ class Visualizer:
                 details.append(f"Time: {proc.time * scale:.2f} {proc.time_unit}")
             header_params = f"({', '.join(details)})"
             tag_str = f" [{', '.join(sorted(proc.tags))}]" if proc.tags else ""
-            print(f"\nStep {i}: {proc.name} {header_params}{tag_str}")
+            print(f"\nStep {i}: {proc.original_label} {header_params}{tag_str}")
             if proc.tools:
                 tools_str = ", ".join(str(t) for t in sorted(proc.tools, key=lambda x: x.name))
                 print(f"  Tools: {tools_str}")
@@ -162,7 +162,7 @@ class Visualizer:
 
         for proc in processes:
             scale = process_scales[proc.name]
-            node_parts = [f"{proc.name} (x{scale:.2f})"]
+            node_parts = [f"{proc.original_label} (x{scale:.2f})"]
             proc_metrics = []
             if proc.cost > 0:
                 proc_metrics.append(f"Cost: {proc.cost * scale:.2f}")

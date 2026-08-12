@@ -187,7 +187,7 @@ class Process:
     """Represents a production process transforming input resources into output resources."""
     def __init__(
         self,
-        name: str,
+        original_label: str,
         inp: set[tuple[Quantity, Resource]],
         out: set[tuple[Quantity, Resource]],
         cost: float = 0.0,
@@ -195,8 +195,11 @@ class Process:
         time_unit: str = "min",
         tags: set[str] | frozenset[str] | None = None,
         tools: set["Tool"] | frozenset["Tool"] | None = None,
+        fully_qualified_label: str | None = None,
     ) -> None:
-        self.name = name
+        self.original_label = original_label
+        self.fully_qualified_label = fully_qualified_label or original_label
+        self.name = self.fully_qualified_label
         self.inp = inp
         self.out = out
         self.cost = float(cost)

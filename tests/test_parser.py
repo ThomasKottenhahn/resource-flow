@@ -43,20 +43,6 @@ def test_parser_with_simple_recipe(tmp_path):
     assert r_target.basic is False
     assert q_target == Quantity(700.0, "g")
 
-
-def test_parser_with_no_labels(tmp_path):
-    recipe_content = "100 g A -> 100 g B; make 100 g B;"
-    recipe_file = tmp_path / "test_no_labels.rf"
-    recipe_file.write_text(recipe_content, encoding="utf-8")
-
-    parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
-
-    assert len(processes) == 1
-    proc = list(processes)[0]
-    assert proc.name == ""  # No label
-
-
 def test_parser_with_tags_and_metrics(tmp_path):
     recipe_content = """
     cut_carrots [cost: 1.50, time: 10 min, manual]: 500 g carrots * [cost: 2.00, !cut, organic] -> 450 g carrots [cut, organic];
@@ -89,7 +75,7 @@ def test_parser_with_tags_and_metrics(tmp_path):
 
 
 def test_parser_basic_as_tag(tmp_path):
-    recipe_content = "100 g flour [basic] -> 100 g dough; make 100 g dough;"
+    recipe_content = "P1: 100 g flour [basic] -> 100 g dough; make 100 g dough;"
     recipe_file = tmp_path / "test_basic_tag.rf"
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
@@ -182,7 +168,7 @@ def test_parse_general_goals(tmp_path):
     from resource_flow.models import AggregateGoal, RelationalGoal
 
     recipe_content = """
-    100 g A -> 100 g B;
+    P1: 100 g A -> 100 g B;
     [min manual_labour, max throughput, cost <= 10, time < 30 min, cheapest] make 100 g B;
     """
     recipe_file = tmp_path / "test_goals.rf"

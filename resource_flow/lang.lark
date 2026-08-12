@@ -2,7 +2,7 @@ program: (statement ";")*
     ?statement: transition
                 | query
 
-    transition: proc_header? multiset_expr "->" multiset_expr tool_clause?
+    transition: proc_header multiset_expr "->" multiset_expr tool_clause?
 
     proc_header: (label tags? | tags) ":"
 
