@@ -309,31 +309,37 @@ class RecipeParser:
 
     def parse_file(self, file_path: str) -> tuple[set[Resource], set[Process], Query]:
         """Parse a DSL file and return all discovered resources, processes, and the combined query."""
-        resources, global_scope_processes, combined_query, _ = self._parse_file_internal(file_path, {})
+        resources, global_scope_processes, combined_query, _, _ = self._parse_file_internal(file_path, {})
         return resources, global_scope_processes, combined_query
 
-    def _parse_file_internal(self, file_path: str, _cache: dict[str, tuple[Query, list[Process]]]) -> tuple[set[Resource], set[Process], Query, list[Process]]:
+    def _parse_file_internal(self, file_path: str, _cache: dict[str, tuple[Query, list[Process], list[Process]]]) -> tuple[set[Resource], set[Process], Query, list[Process], list[Process]]:
         target_resolved = str(Path(file_path).resolve())
         if target_resolved in _cache:
-            cached_query, cached_all_procs = _cache[target_resolved]
-            return set(), set(), Query(set()), cached_all_procs
+            cached_query, cached_owned, cached_reexported = _cache[target_resolved]
+            return set(), set(), Query(set()), cached_owned, cached_reexported
 
         # Add empty entry to break circular imports immediately
-        _cache[target_resolved] = (Query(set()), [])
+        _cache[target_resolved] = (Query(set()), [], [])
 
         content = Path(file_path).read_text(encoding="utf-8")
         tree = self.lark.parse(content)
         items = RecipeTransformer().transform(tree)
 
-        all_processes: list[Process] = []
+        all_owned_processes: list[Process] = []
+        all_reexported_processes: list[Process] = []
         queries: list[Query] = []
-        imports: list[Import] = []
         
-        def walk(item_list, current_path: list[str]) -> set[Process]:
-            scope_processes = set()
+        # Map module paths to their direct contents
+        modules_map = {}
+        
+        def walk(item_list, current_path: list[str]):
+            mod_key = "::".join(current_path)
+            if mod_key not in modules_map:
+                modules_map[mod_key] = {"processes": [], "imports": []}
+                
             for item in item_list:
                 if isinstance(item, Process):
-                    prefix = "::".join(current_path)
+                    prefix = mod_key
                     if prefix:
                         item.fully_qualified_label = f"{prefix}::{item.original_label}"
                         item.name = item.fully_qualified_label
@@ -341,47 +347,90 @@ class RecipeParser:
                         item.fully_qualified_label = item.original_label
                         item.name = item.fully_qualified_label
                     
-                    all_processes.append(item)
-                    scope_processes.add(item)
+                    modules_map[mod_key]["processes"].append(item)
+                    all_owned_processes.append(item)
                 elif isinstance(item, Query):
                     queries.append(item)
                 elif isinstance(item, Import):
-                    if not current_path:
-                        imports.append(item)
+                    modules_map[mod_key]["imports"].append(item)
                 elif isinstance(item, Module):
                     walk(item.items, current_path + [item.name])
-            return scope_processes
-            
-        global_scope_processes = walk(items, [])
+        walk(items, [])
         
-        # Resolve external files first
-        for imp in list(imports):
-            if imp.is_file:
-                target_path = Path(file_path).parent / imp.module_name
-                _, _, target_query, target_all_processes = self._parse_file_internal(str(target_path), _cache)
+        exported_by_module = {}
+        
+        def get_exports(mod_key: str, visited: set) -> set[Process]:
+            if mod_key in exported_by_module:
+                return exported_by_module[mod_key]
+            
+            if mod_key in visited:
+                return set()
+            visited.add(mod_key)
+            
+            exports = set()
+            if mod_key in modules_map:
+                exports.update(modules_map[mod_key]["processes"])
                 
-                queries.append(target_query)
-                
-                prefix = imp.module_name
-                import copy
-                for p in target_all_processes:
-                    new_p = copy.copy(p)
-                    new_p.fully_qualified_label = f"{prefix}::{new_p.fully_qualified_label}"
-                    new_p.name = new_p.fully_qualified_label
-                    all_processes.append(new_p)
-
-        for imp in imports:
-            prefix = imp.module_name
-            for p in all_processes:
-                if p.fully_qualified_label.startswith(f"{prefix}::"):
-                    rest = p.fully_qualified_label[len(prefix)+2:]
-                    if not imp.items:
-                        global_scope_processes.add(p)
-                    else:
-                        first_part = rest.split("::")[0]
-                        if first_part in imp.items:
-                            global_scope_processes.add(p)
+                for imp in modules_map[mod_key]["imports"]:
+                    if imp.is_file:
+                        target_path = Path(file_path).parent / imp.module_name
+                        target_resolved_path = str(target_path.resolve())
+                        
+                        if target_resolved_path not in _cache:
+                            self._parse_file_internal(str(target_path), _cache)
+                        
+                        target_query, target_owned, target_reexported = _cache[target_resolved_path]
+                        queries.append(target_query)
+                        
+                        prefix = imp.module_name
+                        import copy
+                        for p in target_owned:
+                            new_p = copy.copy(p)
+                            new_p.fully_qualified_label = f"{prefix}::{new_p.fully_qualified_label}"
+                            new_p.name = new_p.fully_qualified_label
                             
+                            if imp.items:
+                                first_part = p.fully_qualified_label.split("::")[0]
+                                if first_part not in imp.items:
+                                    continue
+                                    
+                            exports.add(new_p)
+                            all_reexported_processes.append(new_p)
+                            
+                        for p in target_reexported:
+                            if imp.items:
+                                # For re-exported processes, their FQN doesn't start with our file prefix
+                                # But how do we filter them? 
+                                # Usually you wouldn't specifically import a re-exported process by just name, but if they do,
+                                # they'd use its first part.
+                                first_part = p.fully_qualified_label.split("::")[0]
+                                if first_part not in imp.items:
+                                    continue
+                                    
+                            exports.add(p)
+                            all_reexported_processes.append(p)
+                            
+                    else:
+                        target_mod_key = imp.module_name
+                        target_exports = get_exports(target_mod_key, visited)
+                        
+                        if not imp.items:
+                            exports.update(target_exports)
+                        else:
+                            for p in target_exports:
+                                rest = p.fully_qualified_label
+                                prefix = f"{target_mod_key}::"
+                                if rest.startswith(prefix):
+                                    rest = rest[len(prefix):]
+                                first_part = rest.split("::")[0]
+                                if first_part in imp.items:
+                                    exports.add(p)
+                                    
+            exported_by_module[mod_key] = exports
+            visited.remove(mod_key)
+            return exports
+
+        global_scope_processes = get_exports("", set())
         resources = set()
         for p in global_scope_processes:
             resources.update(r for _, r in p.inp)
@@ -392,6 +441,6 @@ class RecipeParser:
             combined_query.add(q)
             resources.update(r for _, r in q.query)
             
-        _cache[target_resolved] = (combined_query, all_processes)
+        _cache[target_resolved] = (combined_query, all_owned_processes, all_reexported_processes)
             
-        return resources, global_scope_processes, combined_query, all_processes
+        return resources, global_scope_processes, combined_query, all_owned_processes, all_reexported_processes

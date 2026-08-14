@@ -234,6 +234,14 @@ class Process:
                 return False
         return True
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Process):
+            return False
+        return self.name == other.name
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
 
 class Import:
     """Represents a use statement for bringing module contents into scope."""

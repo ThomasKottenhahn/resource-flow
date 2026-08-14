@@ -59,5 +59,5 @@ def test_external_import_nested(tmp_path):
 
     assert len(processes) == 2
     names = {p.name for p in processes}
-    assert "sub.rf::subsub.rf::p1" in names
+    assert "subsub.rf::p1" in names
     assert "sub.rf::p2" in names
