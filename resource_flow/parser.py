@@ -273,13 +273,20 @@ class RecipeTransformer(Transformer):
         return Module(name, list(items[1:]))
 
     def import_stmt(self, items):
-        module_name = str(items[0])
+        module_name_raw = str(items[0])
+        is_file = False
+        if module_name_raw.startswith('"') and module_name_raw.endswith('"'):
+            module_name = module_name_raw[1:-1]
+            is_file = True
+        else:
+            module_name = module_name_raw
+
         if len(items) > 1:
             import_path = items[1]
             if isinstance(import_path, str):
-                return Import(module_name, [import_path])
-            return Import(module_name, import_path)
-        return Import(module_name)
+                return Import(module_name, [import_path], is_file=is_file)
+            return Import(module_name, import_path, is_file=is_file)
+        return Import(module_name, is_file=is_file)
 
     def import_path(self, items):
         if len(items) == 1:
@@ -302,6 +309,18 @@ class RecipeParser:
 
     def parse_file(self, file_path: str) -> tuple[set[Resource], set[Process], Query]:
         """Parse a DSL file and return all discovered resources, processes, and the combined query."""
+        resources, global_scope_processes, combined_query, _ = self._parse_file_internal(file_path, {})
+        return resources, global_scope_processes, combined_query
+
+    def _parse_file_internal(self, file_path: str, _cache: dict[str, tuple[Query, list[Process]]]) -> tuple[set[Resource], set[Process], Query, list[Process]]:
+        target_resolved = str(Path(file_path).resolve())
+        if target_resolved in _cache:
+            cached_query, cached_all_procs = _cache[target_resolved]
+            return set(), set(), Query(set()), cached_all_procs
+
+        # Add empty entry to break circular imports immediately
+        _cache[target_resolved] = (Query(set()), [])
+
         content = Path(file_path).read_text(encoding="utf-8")
         tree = self.lark.parse(content)
         items = RecipeTransformer().transform(tree)
@@ -335,13 +354,32 @@ class RecipeParser:
             
         global_scope_processes = walk(items, [])
         
+        # Resolve external files first
+        for imp in list(imports):
+            if imp.is_file:
+                target_path = Path(file_path).parent / imp.module_name
+                _, _, target_query, target_all_processes = self._parse_file_internal(str(target_path), _cache)
+                
+                queries.append(target_query)
+                
+                prefix = imp.module_name
+                import copy
+                for p in target_all_processes:
+                    new_p = copy.copy(p)
+                    new_p.fully_qualified_label = f"{prefix}::{new_p.fully_qualified_label}"
+                    new_p.name = new_p.fully_qualified_label
+                    all_processes.append(new_p)
+
         for imp in imports:
             prefix = imp.module_name
             for p in all_processes:
                 if p.fully_qualified_label.startswith(f"{prefix}::"):
                     rest = p.fully_qualified_label[len(prefix)+2:]
-                    if "::" not in rest:
-                        if not imp.items or rest in imp.items:
+                    if not imp.items:
+                        global_scope_processes.add(p)
+                    else:
+                        first_part = rest.split("::")[0]
+                        if first_part in imp.items:
                             global_scope_processes.add(p)
                             
         resources = set()
@@ -354,4 +392,6 @@ class RecipeParser:
             combined_query.add(q)
             resources.update(r for _, r in q.query)
             
-        return resources, global_scope_processes, combined_query
+        _cache[target_resolved] = (combined_query, all_processes)
+            
+        return resources, global_scope_processes, combined_query, all_processes

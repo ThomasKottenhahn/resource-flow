@@ -237,19 +237,21 @@ class Process:
 
 class Import:
     """Represents a use statement for bringing module contents into scope."""
-    def __init__(self, module_name: str, items: list[str] | None = None) -> None:
+    def __init__(self, module_name: str, items: list[str] | None = None, is_file: bool = False) -> None:
         self.module_name = module_name
         self.items = items
+        self.is_file = is_file
 
     def __repr__(self) -> str:
+        name_repr = f'"{self.module_name}"' if self.is_file else self.module_name
         if self.items:
-            return f"use {self.module_name}::{{{', '.join(self.items)}}}"
-        return f"use {self.module_name}"
+            return f"use {name_repr}::{{{', '.join(self.items)}}}"
+        return f"use {name_repr}"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Import):
             return False
-        return self.module_name == other.module_name and self.items == other.items
+        return self.module_name == other.module_name and self.items == other.items and self.is_file == other.is_file
 
 
 class Module:

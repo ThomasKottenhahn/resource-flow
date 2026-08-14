@@ -11,7 +11,8 @@ program: program_item*
     ?statement: transition
               | import_stmt
 
-    import_stmt: "use" IDENTIFIER ("::" import_path)?
+    import_stmt: "use" import_source ("::" import_path)?
+    ?import_source: IDENTIFIER | ESCAPED_STRING
     ?import_path: IDENTIFIER | "{" IDENTIFIER ("," IDENTIFIER)* "}"
 
     transition: proc_header multiset_expr "->" multiset_expr tool_clause?
@@ -61,4 +62,5 @@ program: program_item*
 
     %import common.WS
     %import common.NUMBER
+    %import common.ESCAPED_STRING
     %ignore WS
