@@ -1,6 +1,6 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import
 
 
 class RecipeTransformer(Transformer):
@@ -262,26 +262,33 @@ class RecipeTransformer(Transformer):
         return Query(multiset, goals=goals if goals else ("any",), tools=using)
 
 
+    def program_item(self, items):
+        return items[0]
+
+    def module_item(self, items):
+        return items[0]
+
+    def module(self, items):
+        name = str(items[0])
+        return Module(name, list(items[1:]))
+
+    def import_stmt(self, items):
+        module_name = str(items[0])
+        if len(items) > 1:
+            import_path = items[1]
+            if isinstance(import_path, str):
+                return Import(module_name, [import_path])
+            return Import(module_name, import_path)
+        return Import(module_name)
+
+    def import_path(self, items):
+        if len(items) == 1:
+            return str(items[0])
+        return [str(i) for i in items]
+
     def program(self, items):
         """Parse a complete resource flow program."""
-        processes = set()
-        queries = []
-        resources = set()
-
-        for item in items:
-            if isinstance(item, Process):
-                processes.add(item)
-                resources.update(r for _, r in item.inp)
-                resources.update(r for _, r in item.out)
-            elif isinstance(item, Query):
-                queries.append(item)
-                resources.update(r for _, r in item.query)
-
-        combined_query = Query(set())
-        for q in queries:
-            combined_query.add(q)
-
-        return resources, processes, combined_query
+        return list(items)
 
 
 
@@ -297,4 +304,54 @@ class RecipeParser:
         """Parse a DSL file and return all discovered resources, processes, and the combined query."""
         content = Path(file_path).read_text(encoding="utf-8")
         tree = self.lark.parse(content)
-        return RecipeTransformer().transform(tree)
+        items = RecipeTransformer().transform(tree)
+
+        all_processes: list[Process] = []
+        queries: list[Query] = []
+        imports: list[Import] = []
+        
+        def walk(item_list, current_path: list[str]) -> set[Process]:
+            scope_processes = set()
+            for item in item_list:
+                if isinstance(item, Process):
+                    prefix = "::".join(current_path)
+                    if prefix:
+                        item.fully_qualified_label = f"{prefix}::{item.original_label}"
+                        item.name = item.fully_qualified_label
+                    else:
+                        item.fully_qualified_label = item.original_label
+                        item.name = item.fully_qualified_label
+                    
+                    all_processes.append(item)
+                    scope_processes.add(item)
+                elif isinstance(item, Query):
+                    queries.append(item)
+                elif isinstance(item, Import):
+                    if not current_path:
+                        imports.append(item)
+                elif isinstance(item, Module):
+                    walk(item.items, current_path + [item.name])
+            return scope_processes
+            
+        global_scope_processes = walk(items, [])
+        
+        for imp in imports:
+            prefix = imp.module_name
+            for p in all_processes:
+                if p.fully_qualified_label.startswith(f"{prefix}::"):
+                    rest = p.fully_qualified_label[len(prefix)+2:]
+                    if "::" not in rest:
+                        if not imp.items or rest in imp.items:
+                            global_scope_processes.add(p)
+                            
+        resources = set()
+        for p in global_scope_processes:
+            resources.update(r for _, r in p.inp)
+            resources.update(r for _, r in p.out)
+            
+        combined_query = Query(set())
+        for q in queries:
+            combined_query.add(q)
+            resources.update(r for _, r in q.query)
+            
+        return resources, global_scope_processes, combined_query

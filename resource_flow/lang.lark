@@ -1,6 +1,18 @@
-program: (statement ";")*
+program: program_item*
+    ?program_item: statement ";"
+                 | query ";"
+                 | module
+
+    module: "mod" IDENTIFIER "{" module_item* "}"
+
+    ?module_item: statement ";"
+                | module
+
     ?statement: transition
-                | query
+              | import_stmt
+
+    import_stmt: "use" IDENTIFIER ("::" import_path)?
+    ?import_path: IDENTIFIER | "{" IDENTIFIER ("," IDENTIFIER)* "}"
 
     transition: proc_header multiset_expr "->" multiset_expr tool_clause?
 

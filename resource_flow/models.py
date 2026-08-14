@@ -235,6 +235,33 @@ class Process:
         return True
 
 
+class Import:
+    """Represents a use statement for bringing module contents into scope."""
+    def __init__(self, module_name: str, items: list[str] | None = None) -> None:
+        self.module_name = module_name
+        self.items = items
+
+    def __repr__(self) -> str:
+        if self.items:
+            return f"use {self.module_name}::{{{', '.join(self.items)}}}"
+        return f"use {self.module_name}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Import):
+            return False
+        return self.module_name == other.module_name and self.items == other.items
+
+
+class Module:
+    """Represents an inline module containing processes and other modules."""
+    def __init__(self, name: str, items: list[Any]) -> None:
+        self.name = name
+        self.items = items
+
+    def __repr__(self) -> str:
+        return f"mod {self.name} {{ {len(self.items)} items }}"
+
+
 class Goal:
     """Abstract base class for optimization or constraint goals."""
     def evaluate(self, dag: Any) -> float | bool:

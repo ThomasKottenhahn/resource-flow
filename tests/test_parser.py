@@ -212,3 +212,65 @@ def test_parser_tools(tmp_path):
         Tool("oven", Quantity(1.0, "piece")),
         Tool("oven_mits", Quantity(2.0, "piece"))
     })
+
+
+def test_module_processes_not_in_scope(tmp_path):
+    recipe_content = """
+    mod prep {
+        peel: 300 g carrots * -> 280 g peeled_carrots;
+    }
+    cook: 280 g peeled_carrots -> 700 g carrot_soup;
+    make 700 g carrot_soup;
+    """
+    recipe_file = tmp_path / "test_module.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+    
+    # process inside module should not be in the returned set
+    assert len(processes) == 1
+    assert list(processes)[0].name == "cook"
+
+
+def test_module_processes_with_import_all(tmp_path):
+    recipe_content = """
+    mod prep {
+        peel: 300 g carrots * -> 280 g peeled_carrots;
+    }
+    use prep;
+    cook: 280 g peeled_carrots -> 700 g carrot_soup;
+    make 700 g carrot_soup;
+    """
+    recipe_file = tmp_path / "test_module_use_all.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+    
+    assert len(processes) == 2
+    process_names = {p.name for p in processes}
+    assert process_names == {"prep::peel", "cook"}
+    
+    peel_proc = next(p for p in processes if p.name == "prep::peel")
+    assert peel_proc.fully_qualified_label == "prep::peel"
+    assert peel_proc.original_label == "peel"
+
+
+def test_module_processes_with_import_specific(tmp_path):
+    recipe_content = """
+    mod prep {
+        peel: 300 g carrots * -> 280 g peeled_carrots;
+        chop: 280 g peeled_carrots -> 280 g chopped_carrots;
+    }
+    use prep::{peel};
+    make 700 g carrot_soup;
+    """
+    recipe_file = tmp_path / "test_module_use_specific.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    resources, processes, query = parser.parse_file(str(recipe_file))
+    
+    assert len(processes) == 1
+    assert list(processes)[0].name == "prep::peel"
