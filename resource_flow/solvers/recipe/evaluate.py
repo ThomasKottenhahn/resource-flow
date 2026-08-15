@@ -1,4 +1,4 @@
-from .models import Goal, RelationalGoal, Quantity, SolutionCandidate
+from ...models import Goal, RelationalGoal, Quantity, SolutionCandidate
 from .scale import ScaleResolver
 
 class GoalEvaluator:

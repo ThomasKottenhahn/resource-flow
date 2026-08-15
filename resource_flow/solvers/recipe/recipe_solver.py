@@ -1,14 +1,15 @@
-from .dag import DAG, DAGEdge, DAGNode
-from .models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, SolutionCandidate
+from ...dag import DAG, DAGEdge, DAGNode
+from ...models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, SolutionCandidate
 from typing import Any
 from .search import CandidateSearch
 from .scale import ScaleResolver
 from .evaluate import GoalEvaluator
+from ..base import Solver
 
-class RecipeSolver:
+class RecipeSolver(Solver):
     """Orchestrates the resolution of queries by searching candidate graphs, scaling processes, and evaluating goals."""
     def __init__(self, processes: set[Process], query: Query) -> None:
-        self.query = query
+        super().__init__(processes, query)
         
         filtered_processes = []
         for p in processes:

@@ -1,5 +1,5 @@
-from .models import Process, Query, Quantity, Resource, SolutionCandidate
-from .dag import DAG, DAGNode, DAGEdge
+from ...models import Process, Query, Quantity, Resource, SolutionCandidate
+from ...dag import DAG, DAGNode, DAGEdge
 from .search import CandidateSearch
 
 class ScaleResolver:

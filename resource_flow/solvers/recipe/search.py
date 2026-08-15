@@ -1,4 +1,4 @@
-from .models import Process, Query, Resource, SolutionCandidate
+from ...models import Process, Query, Resource, SolutionCandidate
 
 class CandidateSearch:
     """Explores the process graph to find valid candidate combinations of processes."""
