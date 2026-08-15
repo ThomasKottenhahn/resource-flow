@@ -1,6 +1,20 @@
 from pathlib import Path
 from lark import Lark, Transformer
 from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import
+from dataclasses import dataclass, field
+
+@dataclass
+class ModuleScope:
+    processes: list[Process] = field(default_factory=list)
+    imports: list[Import] = field(default_factory=list)
+
+@dataclass
+class ParseResult:
+    resources: set[Resource] = field(default_factory=set)
+    global_processes: set[Process] = field(default_factory=set)
+    query: Query = field(default_factory=lambda: Query(set()))
+    owned_processes: list[Process] = field(default_factory=list)
+    reexported_processes: list[Process] = field(default_factory=list)
 
 
 class RecipeTransformer(Transformer):
@@ -307,19 +321,33 @@ class RecipeParser:
         grammar = Path(grammar_path).read_text(encoding="utf-8")
         self.lark = Lark(grammar, start="program")
 
+    @staticmethod
+    def _should_import(p: Process, imp: Import, prefix: str | None = None) -> bool:
+        if not imp.items:
+            return True
+        rest = p.fully_qualified_label
+        if prefix and rest.startswith(f"{prefix}::"):
+            rest = rest[len(f"{prefix}::"):]
+        first_part = rest.split("::")[0]
+        return first_part in imp.items
+
     def parse_file(self, file_path: str) -> tuple[set[Resource], set[Process], Query]:
         """Parse a DSL file and return all discovered resources, processes, and the combined query."""
-        resources, global_scope_processes, combined_query, _, _ = self._parse_file_internal(file_path, {})
-        return resources, global_scope_processes, combined_query
+        res = self._parse_file_internal(file_path, {})
+        return res.resources, res.global_processes, res.query
 
-    def _parse_file_internal(self, file_path: str, _cache: dict[str, tuple[Query, list[Process], list[Process]]]) -> tuple[set[Resource], set[Process], Query, list[Process], list[Process]]:
+    def _parse_file_internal(self, file_path: str, _cache: dict[str, ParseResult]) -> ParseResult:
         target_resolved = str(Path(file_path).resolve())
         if target_resolved in _cache:
-            cached_query, cached_owned, cached_reexported = _cache[target_resolved]
-            return set(), set(), Query(set()), cached_owned, cached_reexported
+            cached = _cache[target_resolved]
+            return ParseResult(
+                query=Query(set()),
+                owned_processes=cached.owned_processes,
+                reexported_processes=cached.reexported_processes
+            )
 
         # Add empty entry to break circular imports immediately
-        _cache[target_resolved] = (Query(set()), [], [])
+        _cache[target_resolved] = ParseResult()
 
         content = Path(file_path).read_text(encoding="utf-8")
         tree = self.lark.parse(content)
@@ -330,12 +358,12 @@ class RecipeParser:
         queries: list[Query] = []
         
         # Map module paths to their direct contents
-        modules_map = {}
+        modules_map: dict[str, ModuleScope] = {}
         
         def walk(item_list, current_path: list[str]):
             mod_key = "::".join(current_path)
             if mod_key not in modules_map:
-                modules_map[mod_key] = {"processes": [], "imports": []}
+                modules_map[mod_key] = ModuleScope()
                 
             for item in item_list:
                 if isinstance(item, Process):
@@ -347,12 +375,12 @@ class RecipeParser:
                         item.fully_qualified_label = item.original_label
                         item.name = item.fully_qualified_label
                     
-                    modules_map[mod_key]["processes"].append(item)
+                    modules_map[mod_key].processes.append(item)
                     all_owned_processes.append(item)
                 elif isinstance(item, Query):
                     queries.append(item)
                 elif isinstance(item, Import):
-                    modules_map[mod_key]["imports"].append(item)
+                    modules_map[mod_key].imports.append(item)
                 elif isinstance(item, Module):
                     walk(item.items, current_path + [item.name])
         walk(items, [])
@@ -369,62 +397,61 @@ class RecipeParser:
             
             exports = set()
             if mod_key in modules_map:
-                exports.update(modules_map[mod_key]["processes"])
+                exports.update(modules_map[mod_key].processes)
                 
-                for imp in modules_map[mod_key]["imports"]:
-                    if imp.is_file:
+                for imp in modules_map[mod_key].imports:
+                    # 1. Try local module first if it's not explicitly a file (string literal)
+                    is_local_module = not imp.is_file and imp.module_name in modules_map
+                    if is_local_module:
+                        target_mod_key = imp.module_name
+                        target_exports = get_exports(target_mod_key, visited)
+                        
+                        for p in target_exports:
+                            if self._should_import(p, imp, prefix=target_mod_key):
+                                exports.add(p)
+                    else:
+                        # 2. File import or fallback for bare module that wasn't local
                         target_path = Path(file_path).parent / imp.module_name
+                        
+                        # Implicit .rf resolution
+                        if not target_path.exists() and not target_path.name.endswith(".rf"):
+                            target_path_with_ext = target_path.with_suffix(".rf")
+                            if target_path_with_ext.exists():
+                                target_path = target_path_with_ext
+                            elif imp.is_file:
+                                # Keep the original target_path if it's explicitly a string and we didn't find .rf
+                                # Actually, if implicit .rf is requested for "path/to/mod", we should just append it
+                                # wait, what if the user wrote use "path/to/mod"; and mod without .rf doesn't exist?
+                                # The spec says: use "path/to/mod"; resolves to path/to/mod.rf
+                                target_path = target_path_with_ext
+
+                        if not target_path.exists() and not imp.is_file:
+                            # if use mod; and neither mod nor mod.rf exists locally, we should probably append .rf anyway so the error message mentions the right file
+                            target_path = target_path.with_suffix(".rf")
+                            
                         target_resolved_path = str(target_path.resolve())
                         
                         if target_resolved_path not in _cache:
                             self._parse_file_internal(str(target_path), _cache)
                         
-                        target_query, target_owned, target_reexported = _cache[target_resolved_path]
-                        queries.append(target_query)
+                        target_res = _cache[target_resolved_path]
+                        queries.append(target_res.query)
                         
                         prefix = imp.module_name
                         import copy
-                        for p in target_owned:
+                        for p in target_res.owned_processes:
                             new_p = copy.copy(p)
                             new_p.fully_qualified_label = f"{prefix}::{new_p.fully_qualified_label}"
                             new_p.name = new_p.fully_qualified_label
                             
-                            if imp.items:
-                                first_part = p.fully_qualified_label.split("::")[0]
-                                if first_part not in imp.items:
-                                    continue
-                                    
-                            exports.add(new_p)
-                            all_reexported_processes.append(new_p)
+                            if self._should_import(p, imp):
+                                exports.add(new_p)
+                                all_reexported_processes.append(new_p)
                             
-                        for p in target_reexported:
-                            if imp.items:
-                                # For re-exported processes, their FQN doesn't start with our file prefix
-                                # But how do we filter them? 
-                                # Usually you wouldn't specifically import a re-exported process by just name, but if they do,
-                                # they'd use its first part.
-                                first_part = p.fully_qualified_label.split("::")[0]
-                                if first_part not in imp.items:
-                                    continue
-                                    
-                            exports.add(p)
-                            all_reexported_processes.append(p)
-                            
-                    else:
-                        target_mod_key = imp.module_name
-                        target_exports = get_exports(target_mod_key, visited)
-                        
-                        if not imp.items:
-                            exports.update(target_exports)
-                        else:
-                            for p in target_exports:
-                                rest = p.fully_qualified_label
-                                prefix = f"{target_mod_key}::"
-                                if rest.startswith(prefix):
-                                    rest = rest[len(prefix):]
-                                first_part = rest.split("::")[0]
-                                if first_part in imp.items:
-                                    exports.add(p)
+                        for p in target_res.reexported_processes:
+                            if self._should_import(p, imp):
+                                exports.add(p)
+                                all_reexported_processes.append(p)
                                     
             exported_by_module[mod_key] = exports
             visited.remove(mod_key)
@@ -441,6 +468,12 @@ class RecipeParser:
             combined_query.add(q)
             resources.update(r for _, r in q.query)
             
-        _cache[target_resolved] = (combined_query, all_owned_processes, all_reexported_processes)
-            
-        return resources, global_scope_processes, combined_query, all_owned_processes, all_reexported_processes
+        res = ParseResult(
+            resources=resources,
+            global_processes=global_scope_processes,
+            query=combined_query,
+            owned_processes=all_owned_processes,
+            reexported_processes=all_reexported_processes
+        )
+        _cache[target_resolved] = res
+        return res
