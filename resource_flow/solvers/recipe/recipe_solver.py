@@ -18,10 +18,7 @@ class RecipeSolver(Solver):
                 
         self._all_processes = sorted(processes, key=lambda p: p.name)
         self.processes = sorted(filtered_processes, key=lambda p: p.name)
-        self.basic_resources: dict[str, Resource] = {}
         self.basic_resource_names = self._identify_basic_resources()
-        self.final_demands: dict[str, Quantity] = {}
-        self.final_surplus: dict[str, Quantity] = {}
         self.processes_in_dag: list[Process] = []
         self.basic_requirements: set[str] = set()
         self._result_dag: DAG | None = None

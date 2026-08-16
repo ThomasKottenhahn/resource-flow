@@ -139,6 +139,7 @@ def main():
     parser.add_argument("--density", type=float, required=True, help="Edge density (0.0 to 1.0).")
     parser.add_argument("--files", type=int, required=True, help="Number of files to generate.")
     parser.add_argument("--out", type=str, required=True, help="Output directory.")
+    parser.add_argument("--num_queries", type=int, default=20, help="Maximum number of queries per file to generate.")
     
     args = parser.parse_args()
     
@@ -150,8 +151,6 @@ def main():
     if not all_resources:
         all_resources = ["final_fallback"]
         
-    max_resources_to_query = max(1, int(len(all_resources) * 0.25))
-    
     goal_types = ["cheapest", "fastest"]
     
     for file_idx in range(args.files):
@@ -162,7 +161,7 @@ def main():
             
             if args.files > 1:
                 fraction = file_idx / (args.files - 1)
-                num_to_query = int(1 + fraction * (max_resources_to_query - 1))
+                num_to_query = int(1 + fraction * (args.num_queries - 1))
             else:
                 num_to_query = 1
                 
