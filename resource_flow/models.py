@@ -442,15 +442,3 @@ class Query:
         return missing
 
 
-@dataclass
-class SolutionCandidate:
-    """Encapsulates the state of a potential graph solution during the solving pipeline."""
-    processes: list[Process]
-    basic_requirements: set[str]
-    scales: dict[str, float] = field(default_factory=dict)
-    demands: dict[str, Quantity] = field(default_factory=dict)
-    surplus: dict[str, Quantity] = field(default_factory=dict)
-    dag_basic_resources: dict[str, Resource] = field(default_factory=dict)
-    dag: "DAG | None" = None
-    scores: tuple[Any, ...] = ()
-    tie_breaker: tuple[str, ...] = ()
