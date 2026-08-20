@@ -1,0 +1,24 @@
+prep_protein_fast [cost: 15.00, time: 20 min]: 
+    800 g beef_cut * [cost: 25.00] -> 750 g cooked_protein [seared];
+
+prep_protein_slow [cost: 8.00, time: 2 h]: 
+    800 g beef_cut * [cost: 25.00] -> 750 g cooked_protein [braised];
+
+make_red_wine_sauce [cost: 3.00, time: 25 min]: 
+    200 ml red_wine * [cost: 4.00], 50 g butter * [cost: 0.80] -> 200 ml reduction_sauce;
+
+make_pan_sauce [cost: 1.00, time: 10 min]: 
+    100 ml beef_stock * [cost: 1.00], 30 g butter * [cost: 0.50] -> 100 ml reduction_sauce;
+
+prep_veggies [cost: 2.00, time: 15 min]: 
+    400 g asparagus * [cost: 3.00], 10 ml olive_oil * [cost: 0.20] -> 380 g roasted_veggies;
+
+assemble_course_a [cost: 2.00, time: 5 min]: 
+    750 g cooked_protein, 100 ml reduction_sauce, 190 g roasted_veggies 
+    -> 1000 g banquet_course_a;
+
+assemble_course_b [cost: 2.00, time: 5 min]: 
+    750 g cooked_protein, 100 ml reduction_sauce, 190 g roasted_veggies 
+    -> 800 g banquet_course_b;
+
+[time <= 90 min, cheapest] make 1000 g banquet_course_a, 800 g banquet_course_b;

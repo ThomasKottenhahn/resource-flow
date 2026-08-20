@@ -1,0 +1,18 @@
+make_commercial_dough [time: 10 min]: 
+    500 g flour * [cost: 1.00], 300 ml water * [cost: 0.10], 10 g commercial_yeast * [cost: 0.50] 
+    -> 800 g dough [commercial];
+
+rise_commercial [time: 15 min]: 
+    800 g dough [commercial] -> 800 g dough [risen];
+
+make_sourdough [time: 20 min]: 
+    500 g flour * [cost: 1.00], 300 ml water * [cost: 0.10], 100 g sourdough_starter * 
+    -> 900 g dough [sourdough];
+
+rise_sourdough [time: 4 h]: 
+    900 g dough [sourdough] -> 900 g dough [risen];
+
+bake [time: 20 min]: 
+    800 g dough [risen] -> 700 g artisan_bread;
+
+[time <= 45 min, cheapest] make 700 g artisan_bread;

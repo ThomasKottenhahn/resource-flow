@@ -1,4 +1,0 @@
-prepare [time: 5 min]: 200 g carrots * -> 150 g peeled_carrots;
-cook [time: 15 min]: 150 g peeled_carrots, 500 ml water * -> 600 g carrot_soup;
-
-make 1200 g carrot_soup;

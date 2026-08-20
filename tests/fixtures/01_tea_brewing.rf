@@ -1,0 +1,5 @@
+boil_water: 100 ml water * -> 100 ml boiled_water;
+steep_tea: 500 ml boiled_water, 5 g tea_leaves * -> 500 ml brewed_tea;
+add_sweetener: 500 ml brewed_tea, 10 g honey * -> 510 ml sweet_tea;
+
+make 510 ml sweet_tea;

@@ -1,0 +1,21 @@
+{
+  "process_scales": {
+    "distill_elixir": 2.0,
+    "extract_essence": 0.6666666666666666
+  },
+  "final_demands": {
+    "crystal_dust": {
+      "value": 4.0,
+      "unit": "g"
+    },
+    "dragon_herb": {
+      "value": 333.3333333333333,
+      "unit": "mg"
+    },
+    "spring_water": {
+      "value": 1.3333333333333333,
+      "unit": "l"
+    }
+  },
+  "final_surplus": {}
+}

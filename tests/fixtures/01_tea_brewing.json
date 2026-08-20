@@ -1,0 +1,22 @@
+{
+  "process_scales": {
+    "add_sweetener": 1.0,
+    "boil_water": 5.0,
+    "steep_tea": 1.0
+  },
+  "final_demands": {
+    "honey": {
+      "value": 10.0,
+      "unit": "g"
+    },
+    "tea_leaves": {
+      "value": 5.0,
+      "unit": "g"
+    },
+    "water": {
+      "value": 500.0,
+      "unit": "ml"
+    }
+  },
+  "final_surplus": {}
+}

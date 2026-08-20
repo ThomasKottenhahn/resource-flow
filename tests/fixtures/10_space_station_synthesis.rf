@@ -1,0 +1,56 @@
+cultured_protein_extract [cost: 20.00, time: 60 min, co2: 2.0 kg]: 
+    1 kg bio_slurry * [cost: 10.00], 500 ml recycled_water * [cost: 1.00] 
+    -> 800 g protein_paste [clean];
+
+insect_protein_harvest [cost: 5.00, time: 120 min, co2: 8.0 kg, manual_labour]: 
+    1.2 kg insect_feed * [cost: 4.00] 
+    -> 800 g protein_paste [rustic];
+
+algae_protein_synth [cost: 40.00, time: 30 min, co2: 0.5 kg]: 
+    1.5 kg algae_culture * [cost: 15.00], 200 kWh solar_power * [cost: 5.00] 
+    -> 800 g protein_paste [pure];
+
+enzymatic_hydrolysis [cost: 15.00, time: 40 min, co2: 1.0 kg]: 
+    1 kg raw_carbs * [cost: 6.00], 50 g enzyme_catalyst * [cost: 8.00] 
+    -> 900 g purified_starch, 500 ml greywater;
+
+thermal_cracking [cost: 10.00, time: 90 min, co2: 12.0 kg]: 
+    1 kg raw_carbs * [cost: 6.00], 500 kJ thermal_energy * [cost: 2.00] 
+    -> 900 g purified_starch, 300 ml hydro_fuel;
+
+synth_vitamin_blend [cost: 12.00, time: 15 min, co2: 0.2 kg]: 
+    100 g mineral_salts * [cost: 3.00], 10 g bio_vitamins * [cost: 5.00] 
+    -> 100 g fortifier [high_grade];
+
+natural_herb_infusion [cost: 8.00, time: 50 min, co2: 3.0 kg, manual_labour]: 
+    150 g dried_herbs * [cost: 4.00], 200 ml recycled_water * [cost: 0.40] 
+    -> 100 g fortifier [organic];
+
+refine_hydro_fuel [cost: 5.00, time: 20 min, co2: 0.5 kg]: 
+    300 ml hydro_fuel 
+    -> 300 ml hydro_fuel [refined];
+
+bio_fuel_cell_synth [cost: 18.00, time: 15 min, co2: 0.1 kg]: 
+    500 ml greywater, 200 g bio_slurry * [cost: 2.00] 
+    -> 500 ml hydro_fuel [refined];
+
+direct_fuel_distillation [cost: 12.00, time: 40 min, co2: 2.0 kg]: 
+    1 l raw_petroleum * [cost: 15.00] 
+    -> 500 ml hydro_fuel [refined];
+
+auto_thermal_molding [cost: 25.00, time: 15 min, co2: 1.5 kg]: 
+    800 g protein_paste [!rustic], 900 g purified_starch, 100 g fortifier 
+    -> 1000 g synth_ration;
+artisanal_hand_pack [cost: 5.00, time: 180 min, co2: 4.0 kg, manual_labour]: 
+    800 g protein_paste, 900 g purified_starch, 100 g fortifier 
+    -> 1000 g synth_ration;
+
+cryo_3d_print [cost: 50.00, time: 10 min, co2: 0.2 kg]: 
+    800 g protein_paste [pure], 900 g purified_starch, 100 g fortifier [high_grade] 
+    -> 1000 g synth_ration;
+
+slurry_compaction [cost: 15.00, time: 30 min, co2: 0.8 kg]: 
+    800 g protein_paste [!rustic], 500 ml greywater, 100 g fortifier [high_grade] 
+    -> 1000 g synth_ration;
+
+[time <= 3 h, co2 <= 20 kg, min manual_labour, cheapest] make 1000 g synth_ration, 500 ml hydro_fuel [refined];

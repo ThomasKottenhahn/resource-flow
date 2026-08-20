@@ -1,0 +1,32 @@
+{
+  "process_scales": {
+    "assemble_course_a": 1.0,
+    "assemble_course_b": 1.0,
+    "make_pan_sauce": 2.0,
+    "prep_protein_fast": 2.0,
+    "prep_veggies": 1.0
+  },
+  "final_demands": {
+    "asparagus": {
+      "value": 400.0,
+      "unit": "g"
+    },
+    "beef_cut": {
+      "value": 1600.0,
+      "unit": "g"
+    },
+    "beef_stock": {
+      "value": 200.0,
+      "unit": "ml"
+    },
+    "butter": {
+      "value": 60.0,
+      "unit": "g"
+    },
+    "olive_oil": {
+      "value": 10.0,
+      "unit": "ml"
+    }
+  },
+  "final_surplus": {}
+}

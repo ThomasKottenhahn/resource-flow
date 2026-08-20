@@ -1,0 +1,21 @@
+{
+  "process_scales": {
+    "auto_quench_and_grind": 1.0,
+    "power_hammer_forge": 1.0
+  },
+  "final_demands": {
+    "electricity": {
+      "value": 10.0,
+      "unit": "kWh"
+    },
+    "oil": {
+      "value": 10.0,
+      "unit": "l"
+    },
+    "steel_ingot": {
+      "value": 2.0,
+      "unit": "kg"
+    }
+  },
+  "final_surplus": {}
+}
