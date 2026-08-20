@@ -42,7 +42,7 @@ def test_solver_basic_detection_and_dag():
     # Topological order: make_dough must be before bake_bread since bake_bread depends on dough
     assert processes_in_dag[0] == make_dough
     assert processes_in_dag[1] == bake_bread
-    assert basic_reqs == {"flour", "water"}
+    assert set(basic_reqs.keys()) == {"flour", "water"}
 
 
 def test_solver_globally_valid_basic_resource():
@@ -166,7 +166,7 @@ def test_solver_tag_matching_producer_selection():
 
     assert proc_org in dag
     assert proc_conv not in dag
-    assert basic_reqs == {"carrots"}
+    assert set(basic_reqs.keys()) == {"carrots"}
 
 
 def test_solver_negated_tag_rejection():
@@ -194,7 +194,8 @@ def test_solver_tagged_recipe_end_to_end(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     solver = RecipeSolver(processes, query)
     scales = solver.solve()
@@ -258,7 +259,8 @@ def test_solver_batch_cost_unit_conversion(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     solver = RecipeSolver(processes, query)
     dag = solver.solve()
@@ -406,7 +408,8 @@ def test_solver_tagged_resource_and_multi_query_graph_edges(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    _, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    processes, query = ctx.processes, ctx.query
 
     solver = RecipeSolver(processes, query)
     dag = solver.solve()
@@ -443,7 +446,8 @@ def test_basic_resource_cost_isolation(tmp_path):
 
     from resource_flow.parser import RecipeParser
     parser = RecipeParser()
-    _, procs, q = parser.parse_file(str(f))
+    ctx = parser.parse_file(str(f))
+    procs, q = ctx.processes, ctx.query
     solver = RecipeSolver(procs, q)
     dag = solver.solve()
 

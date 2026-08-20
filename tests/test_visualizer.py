@@ -40,7 +40,7 @@ def _make_simple_dag():
     dag = DAG(nodes=[node], edges=[edge_in, edge_out])
     demands = {"iron_ore": Quantity(4.0, "kg")}
     surplus: dict[str, Quantity] = {}
-    basic_resources = {"iron_ore": iron_ore}
+    basic_resources = {"iron_ore": [iron_ore]}
     query = Query(query={(Quantity(2.0, "kg"), query_res)})
     return dag, demands, surplus, basic_resources, query, smelt
 
@@ -113,7 +113,7 @@ def test_visualizer_with_tools():
     dag = DAG(nodes=[node], edges=[])
     demands = {"iron_ore": Quantity(2.0, "kg")}
     surplus: dict[str, Quantity] = {}
-    basic_resources = {"iron_ore": iron_ore}
+    basic_resources = {"iron_ore": [iron_ore]}
     query = Query(query={(Quantity(1.0, "kg"), iron_ingot)})
 
     viz = Visualizer(dag, demands, surplus, basic_resources, query)

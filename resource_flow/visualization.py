@@ -14,7 +14,7 @@ class Visualizer:
         dag: DAG,
         demands: dict[str, Quantity],
         surplus: dict[str, Quantity],
-        basic_resources: dict[str, Resource],
+        basic_resources: dict[str, list[Resource]],
         query: Query,
     ) -> None:
         self.dag = dag
@@ -75,7 +75,12 @@ class Visualizer:
         """Calculate and return a summary of cost and time metrics for the resolved DAG."""
         res_cost = 0.0
         for name, qty in self.demands.items():
-            res = self.basic_resources.get(name)
+            # In the DAG, basic edges track the chosen resource variant.
+            # We can grab it from the DAG edges!
+            edge = next((e for e in self.dag.edges if self.dag._is_basic_edge(e) and e.resource.name == name), None)
+            res = edge.resource if edge else None
+            if not res and self.basic_resources.get(name):
+                res = self.basic_resources[name][0]
             if res:
                 res_cost += res.calculate_cost(qty)
         proc_cost = sum(node.process.cost * node.scale for node in self.dag.nodes)
@@ -135,7 +140,10 @@ class Visualizer:
 
         print("\n=== TOTAL BASIC RESOURCES REQUIRED ===")
         for name, qty in sorted(self.demands.items()):
-            basic_res = self.basic_resources.get(name)
+            edge = next((e for e in self.dag.edges if self.dag._is_basic_edge(e) and e.resource.name == name), None)
+            basic_res = edge.resource if edge else None
+            if not basic_res and self.basic_resources.get(name):
+                basic_res = self.basic_resources[name][0]
             res_tags_str = self._format_resource_tags(basic_res)
             cost_str = ""
             if basic_res and basic_res.cost > 0:
@@ -179,7 +187,10 @@ class Visualizer:
             lines.append(f'    {proc.name}["{label}"]')
 
         for name in sorted(basic_reqs):
-            res = self.basic_resources.get(name)
+            edge = next((e for e in self.dag.edges if self.dag._is_basic_edge(e) and e.resource.name == name), None)
+            res = edge.resource if edge else None
+            if not res and self.basic_resources.get(name):
+                res = self.basic_resources[name][0]
             res_tags_str = self._format_resource_tags(res)
             if name in self.demands:
                 qty = self.demands[name]

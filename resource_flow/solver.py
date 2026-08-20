@@ -1,23 +1,44 @@
 from .dag import DAG, DAGEdge, DAGNode
-from .models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, SolutionCandidate
+from .models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, SolutionCandidate, ProgramContext
 from typing import Any
+from collections import defaultdict
 from .search import CandidateSearch
 from .scale import ScaleResolver
 from .evaluate import GoalEvaluator
 
 class RecipeSolver:
     """Orchestrates the resolution of queries by searching candidate graphs, scaling processes, and evaluating goals."""
-    def __init__(self, processes: set[Process], query: Query) -> None:
+    def __init__(
+        self,
+        ctx: "ProgramContext | set[Process] | None" = None,
+        processes: "set[Process] | Query | None" = None,
+        query: "Query | list[Resource] | None" = None,
+        defs: "list[Resource] | None" = None,
+        max_depth: int = 20,
+    ) -> None:
+        from resource_flow.models import ProgramContext
+        if isinstance(ctx, ProgramContext):
+            processes = ctx.processes
+            query = ctx.query
+            defs = ctx.defs
+        elif ctx is not None:
+            # Called as RecipeSolver(processes, query)
+            defs = query if isinstance(query, list) else defs
+            query = processes
+            processes = ctx
+            
         self.query = query
+        self.max_depth = max_depth
         
         filtered_processes = []
-        for p in processes:
+        for p in (processes or set()):
             if p.has_required_tools(self.query.tools):
                 filtered_processes.append(p)
                 
-        self._all_processes = sorted(processes, key=lambda p: p.name)
+        self._all_processes = sorted(processes or set(), key=lambda p: p.name)
         self.processes = sorted(filtered_processes, key=lambda p: p.name)
-        self.basic_resources: dict[str, Resource] = {}
+        self.basic_resources: dict[str, list[Resource]] = defaultdict(list)
+        self.defs = defs or []
         self.basic_resource_names = self._identify_basic_resources()
         self.final_demands: dict[str, Quantity] = {}
         self.final_surplus: dict[str, Quantity] = {}
@@ -26,24 +47,30 @@ class RecipeSolver:
         self._result_dag: DAG | None = None
 
     def _identify_basic_resources(self) -> set[str]:
-        """Discover all resources marked as basic across processes and queries."""
+        """Discover all resources marked as basic across processes, queries, and explicit defs."""
         basics = set()
+        
+        # Populate from explicit defs
+        for d in self.defs:
+            basics.add(d.name)
+            self.basic_resources.setdefault(d.name, []).append(d)
+            
         for p in self.processes:
             for _, r in p.inp:
                 if r.basic:
                     basics.add(r.name)
-                    if r.name not in self.basic_resources or r.cost > 0:
-                        self.basic_resources[r.name] = r
+                    if r.name not in self.basic_resources or (r.cost > 0 and not any(br.cost == r.cost and br.tags == r.tags for br in self.basic_resources[r.name])):
+                        self.basic_resources.setdefault(r.name, []).append(r)
             for _, r in p.out:
                 if r.basic:
                     basics.add(r.name)
-                    if r.name not in self.basic_resources or r.cost > 0:
-                        self.basic_resources[r.name] = r
+                    if r.name not in self.basic_resources or (r.cost > 0 and not any(br.cost == r.cost and br.tags == r.tags for br in self.basic_resources[r.name])):
+                        self.basic_resources.setdefault(r.name, []).append(r)
         for _, r in self.query.query:
             if r.basic:
                 basics.add(r.name)
-                if r.name not in self.basic_resources or r.cost > 0:
-                    self.basic_resources[r.name] = r
+                if r.name not in self.basic_resources or (r.cost > 0 and not any(br.cost == r.cost and br.tags == r.tags for br in self.basic_resources[r.name])):
+                    self.basic_resources.setdefault(r.name, []).append(r)
         return basics
 
     def is_basic(self, resource_name: str) -> bool:

@@ -5,7 +5,7 @@ from .search import CandidateSearch
 class ScaleResolver:
     """Calculates scaling factors for processes and constructs the final resource graph."""
     
-    def __init__(self, query: Query, basic_resources: dict[str, Resource], search: CandidateSearch):
+    def __init__(self, query: Query, basic_resources: dict[str, list[Resource]], search: CandidateSearch):
         self.query = query
         self.basic_resources = basic_resources
         self.search = search
@@ -39,14 +39,11 @@ class ScaleResolver:
 
         # One basic edge per unique basic resource using final accumulated demands
         for name, qty in cand.demands.items():
-            dag_res = cand.dag_basic_resources.get(name)
-            global_res = self.basic_resources.get(name)
-            if dag_res and dag_res.cost > 0:
-                basic_res: Resource | None = dag_res
-            elif global_res and global_res.cost > 0:
-                basic_res = global_res
-            else:
-                basic_res = dag_res or global_res
+            basic_res = cand.basic_requirements.get(name)
+            if not basic_res:
+                basic_res = cand.dag_basic_resources.get(name)
+                if not basic_res and name in self.basic_resources and self.basic_resources[name]:
+                    basic_res = self.basic_resources[name][0]
             if basic_res:
                 edges.append(DAGEdge(
                     source=None,

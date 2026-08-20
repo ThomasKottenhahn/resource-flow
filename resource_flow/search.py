@@ -3,7 +3,7 @@ from .models import Process, Query, Resource, SolutionCandidate
 class CandidateSearch:
     """Explores the process graph to find valid candidate combinations of processes."""
     
-    def __init__(self, processes: list[Process], query: Query, basic_resources: dict[str, Resource], basic_resource_names: set[str]):
+    def __init__(self, processes: list[Process], query: Query, basic_resources: dict[str, list[Resource]], basic_resource_names: set[str]):
         self.processes = processes
         self.query = query
         self.basic_resources = basic_resources
@@ -24,9 +24,9 @@ class CandidateSearch:
         if res.basic:
             return True
         if res.name in self.basic_resources:
-            basic_res = self.basic_resources[res.name]
-            if self._matches_tags(res, basic_res):
-                return True
+            for basic_res in self.basic_resources[res.name]:
+                if self._matches_tags(res, basic_res):
+                    return True
         return False
 
     def find_all_producers(self, target: Resource | str) -> list[Process]:
@@ -94,7 +94,7 @@ class CandidateSearch:
             chosen_procs: list[Process],
             chosen_proc_names: set[str],
             active_stack: set[str],
-            basic_reqs: set[str],
+            basic_reqs: dict[str, Resource],
         ) -> None:
             unresolved = []
             for consumer, res in needed:
@@ -110,24 +110,40 @@ class CandidateSearch:
                 dag_key = tuple(sorted(chosen_proc_names))
                 if dag_key not in seen_keys:
                     seen_keys.add(dag_key)
-                    results.append(SolutionCandidate(processes=list(chosen_procs), basic_requirements=set(basic_reqs)))
+                    results.append(SolutionCandidate(processes=list(chosen_procs), basic_requirements=dict(basic_reqs)))
                 return
 
             consumer, res = unresolved[0]
             producers = [p for p in self.find_all_producers(res) if p != consumer]
             can_basic = self._can_be_basic(res)
 
-            if not producers and not can_basic:
+            valid_basics = []
+            if can_basic:
+                if res.basic:
+                    valid_basics.append(res)
+                if res.name in self.basic_resources:
+                    for b in self.basic_resources[res.name]:
+                        if self._matches_tags(res, b) and b not in valid_basics:
+                            valid_basics.append(b)
+
+            if not valid_basics and not producers:
                 missing_resources.add(res.name)
                 return
 
-            if can_basic:
+            for b_res in valid_basics:
+                new_basic_reqs = dict(basic_reqs)
+                if res.name in new_basic_reqs:
+                    if not self._matches_tags(res, new_basic_reqs[res.name]):
+                        continue
+                else:
+                    new_basic_reqs[res.name] = b_res
+                
                 search(
                     unresolved[1:],
                     chosen_procs,
                     chosen_proc_names,
                     active_stack,
-                    basic_reqs | {res.name},
+                    new_basic_reqs,
                 )
 
             for proc in producers:
@@ -162,7 +178,7 @@ class CandidateSearch:
                     chosen_procs.pop()
 
         initial_needed: list[tuple[Process | None, Resource]] = [(None, res) for _, res in self.query.query]
-        search(initial_needed, [], set(), set(), set())
+        search(initial_needed, [], set(), set(), {})
 
         valid_candidates = []
         for cand in results:

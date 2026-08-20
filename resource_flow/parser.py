@@ -1,6 +1,6 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, ProgramContext
 
 
 class RecipeTransformer(Transformer):
@@ -89,10 +89,6 @@ class RecipeTransformer(Transformer):
         cost_unit = None
 
         if cost > 0:
-            if not is_basic:
-                raise ValueError(
-                    f"Cost can only be specified on basic resources, but '{name}' is not basic"
-                )
             base_qty = qty.to_base_unit()
             unit_cost = cost / base_qty.val
             cost_unit = base_qty.unit
@@ -206,6 +202,13 @@ class RecipeTransformer(Transformer):
                         else:
                             proc_tags.add(f"{key}:{val_num}")
 
+        # Ensure no non-basic resource has cost in the transition
+        for qty, res in (inp | out):
+            if res.cost > 0 and not res.basic:
+                raise ValueError(
+                    f"Cost can only be specified on basic resources, but '{res.name}' is not basic"
+                )
+
         return Process(
             name,
             inp,
@@ -233,6 +236,13 @@ class RecipeTransformer(Transformer):
                     using = item
                 else:
                     multiset = item
+
+        # Ensure no non-basic resource has cost in the query
+        for qty, res in multiset:
+            if res.cost > 0 and not res.basic:
+                raise ValueError(
+                    f"Cost can only be specified on basic resources, but '{res.name}' is not basic"
+                )
 
         goals = []
         if parsed_tags:
@@ -262,11 +272,22 @@ class RecipeTransformer(Transformer):
         return Query(multiset, goals=goals if goals else ("any",), tools=using)
 
 
+    def def_stmt(self, items):
+        """Parse a standalone basic resource definition."""
+        qty, resource = items[0]
+        # def enforces basic implicitly even without a * 
+        tags = set(resource.tags)
+        tags.add("basic")
+        resource.tags = frozenset(tags)
+        return resource
+
     def program(self, items):
         """Parse a complete resource flow program."""
         processes = set()
         queries = []
         resources = set()
+
+        defs = []
 
         for item in items:
             if isinstance(item, Process):
@@ -276,12 +297,20 @@ class RecipeTransformer(Transformer):
             elif isinstance(item, Query):
                 queries.append(item)
                 resources.update(r for _, r in item.query)
+            elif isinstance(item, Resource):
+                defs.append(item)
+                resources.add(item)
 
         combined_query = Query(set())
         for q in queries:
             combined_query.add(q)
 
-        return resources, processes, combined_query
+        return ProgramContext(
+            resources=resources,
+            processes=processes,
+            query=combined_query,
+            defs=defs,
+        )
 
 
 
@@ -293,8 +322,8 @@ class RecipeParser:
         grammar = Path(grammar_path).read_text(encoding="utf-8")
         self.lark = Lark(grammar, start="program")
 
-    def parse_file(self, file_path: str) -> tuple[set[Resource], set[Process], Query]:
-        """Parse a DSL file and return all discovered resources, processes, and the combined query."""
+    def parse_file(self, file_path: str) -> ProgramContext:
+        """Parse a DSL file and return the parsed program context."""
         content = Path(file_path).read_text(encoding="utf-8")
         tree = self.lark.parse(content)
         return RecipeTransformer().transform(tree)

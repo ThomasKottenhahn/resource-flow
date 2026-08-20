@@ -7,13 +7,13 @@ from resource_flow.solver import RecipeSolver
 def run_compiler(file_path: str) -> None:
     try:
         parser = RecipeParser()
-        _, processes, query = parser.parse_file(file_path)
+        ctx = parser.parse_file(file_path)
 
         print("\n------------------------------------------------")
         print("Solving Recipe...")
         print("------------------------------------------------")
 
-        solver = RecipeSolver(processes, query)
+        solver = RecipeSolver(ctx)
         scales = solver.solve()
         solver.print_plan(scales)
 

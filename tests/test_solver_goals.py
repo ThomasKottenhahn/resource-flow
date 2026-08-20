@@ -141,7 +141,8 @@ def test_solver_goal_multi_query_override(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    _, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    _, processes, query = ctx.resources, ctx.processes, ctx.query
 
     # Last query goal [fastest] overrides preceding [cheapest]
     assert query.goals == ("fastest",)
@@ -205,7 +206,8 @@ def test_solver_goal_basic_vs_process_cost_comparison(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    _, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    _, processes, query = ctx.resources, ctx.processes, ctx.query
 
     solver = RecipeSolver(processes, query)
     scales = solver.solve()
@@ -230,8 +232,8 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     from resource_flow.solver import RecipeSolver
 
     parser = RecipeParser()
-    _, processes, query = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(processes, query)
+    ctx = parser.parse_file(str(recipe_file))
+    solver = RecipeSolver(ctx)
     scales = solver.solve()
     
     # [min manual_labour] should prefer harvest_machine
@@ -247,8 +249,9 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     recipe_file_max = tmp_path / "custom_metrics_max.rf"
     recipe_file_max.write_text(recipe_content_max, encoding="utf-8")
     
-    _, processes, query = parser.parse_file(str(recipe_file_max))
-    solver = RecipeSolver(processes, query)
+    ctx = parser.parse_file(str(recipe_file_max))
+    _, processes, query = ctx.resources, ctx.processes, ctx.query
+    solver = RecipeSolver(ctx)
     scales = solver.solve()
     
     # [max throughput] should also prefer harvest_machine
@@ -264,8 +267,9 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     recipe_file_min_co2 = tmp_path / "custom_metrics_min_co2.rf"
     recipe_file_min_co2.write_text(recipe_content_min_co2, encoding="utf-8")
     
-    _, processes, query = parser.parse_file(str(recipe_file_min_co2))
-    solver = RecipeSolver(processes, query)
+    ctx = parser.parse_file(str(recipe_file_min_co2))
+    _, processes, query = ctx.resources, ctx.processes, ctx.query
+    solver = RecipeSolver(ctx)
     scales = solver.solve()
     
     # [min co2] should prefer harvest_manual
@@ -287,8 +291,8 @@ def test_solver_goal_relational_constraints(tmp_path):
     from resource_flow.solver import RecipeSolver
 
     parser = RecipeParser()
-    _, processes, query = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(processes, query)
+    ctx = parser.parse_file(str(recipe_file))
+    solver = RecipeSolver(ctx)
     scales = solver.solve()
     
     # 2 h is 120 min, so harvest_manual fails the constraint.
@@ -312,8 +316,8 @@ def test_solver_goal_infeasible_closest_match(tmp_path):
     import pytest
 
     parser = RecipeParser()
-    _, processes, query = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(processes, query)
+    ctx = parser.parse_file(str(recipe_file))
+    solver = RecipeSolver(ctx)
     
     with pytest.raises(ValueError, match=r"No solution found for manual_labour == 0\.0\. Closest solution found: manual_labour = 1\.0"):
         solver.solve()
@@ -334,11 +338,13 @@ def test_basic_resource_custom_tag_scaling(tmp_path):
     f_kg.write_text(rf_code_kg, encoding="utf-8")
 
     parser = RecipeParser()
-    _, procs_g, q_g = parser.parse_file(str(f_grams))
-    dag_g = RecipeSolver(procs_g, q_g).solve()
+    ctx = parser.parse_file(str(f_grams))
+    _, procs_g, q_g = ctx.resources, ctx.processes, ctx.query
+    dag_g = RecipeSolver(ctx).solve()
 
-    _, procs_kg, q_kg = parser.parse_file(str(f_kg))
-    dag_kg = RecipeSolver(procs_kg, q_kg).solve()
+    ctx = parser.parse_file(str(f_kg))
+    _, procs_kg, q_kg = ctx.resources, ctx.processes, ctx.query
+    dag_kg = RecipeSolver(ctx).solve()
 
     assert dag_g.calculate_metric("co2") == dag_kg.calculate_metric("co2") == 200.0
 
@@ -353,12 +359,9 @@ def test_relational_goal_error_message_unit_formatting(tmp_path):
     f.write_text(rf_code, encoding="utf-8")
 
     parser = RecipeParser()
-    _, procs, q = parser.parse_file(str(f))
-    solver = RecipeSolver(procs, q)
+    ctx = parser.parse_file(str(f))
+    _, procs, q = ctx.resources, ctx.processes, ctx.query
+    solver = RecipeSolver(ctx)
 
     with pytest.raises(ValueError, match=r"No solution found for time <= 45\.0 min\. Closest solution found: time = 60\.0"):
         solver.solve()
-
-
-
-

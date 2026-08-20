@@ -1,6 +1,9 @@
 program: (statement ";")*
     ?statement: transition
                 | query
+                | def_stmt
+
+    def_stmt: "def" resource
 
     transition: proc_header? multiset_expr "->" multiset_expr tool_clause?
 

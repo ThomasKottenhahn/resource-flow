@@ -25,11 +25,6 @@ class Resource:
         self.cost = float(cost)
         self.cost_unit = cost_unit
 
-        if self.cost > 0 and not self.basic:
-            raise ValueError(
-                f"Cost can only be specified on basic resources, but '{self.name}' is not basic"
-            )
-
     @property
     def basic(self) -> bool:
         """Return True if this resource is basic (externally supplied)."""
@@ -403,10 +398,18 @@ class Query:
 
 
 @dataclass
+class ProgramContext:
+    resources: set[Resource]
+    processes: set[Process]
+    query: Query
+    defs: list[Resource]
+
+
+@dataclass
 class SolutionCandidate:
     """Encapsulates the state of a potential graph solution during the solving pipeline."""
     processes: list[Process]
-    basic_requirements: set[str]
+    basic_requirements: dict[str, Resource]
     scales: dict[str, float] = field(default_factory=dict)
     demands: dict[str, Quantity] = field(default_factory=dict)
     surplus: dict[str, Quantity] = field(default_factory=dict)

@@ -63,6 +63,20 @@ Resources that are raw materials (inputs not produced by any process in your scr
 !!! note
     Basic resources declared anywhere in processes are globally recognized across the script graph.
 
+### Global definitions (`def`)
+
+You can define basic resources globally using the `def` keyword. These resources are automatically basic resources. You do not need an asterisk.
+
+```text
+def 300 g carrots [cost: 20, organic];
+def 200 g carrots [cost: 10, frozen];
+
+boil: 100 g carrots -> 100 g carrots [boiled];
+cut: 100 g carrots [!frozen] -> 80 g carrots [organic, cut];
+```
+
+In this example, the solver has two initial sources to choose from: 300g of organic carrots and 200g of frozen carrots. If you then query for boiled carrots, the solver will explore both paths. If you query for cut carrots, the solver will only explore the path using organic carrots.
+
 ---
 
 ### Cost & Time
