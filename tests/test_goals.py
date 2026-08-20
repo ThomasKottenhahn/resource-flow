@@ -22,7 +22,7 @@ def test_goal_base_and_any_goal():
 
 def test_aggregate_goal_evaluate():
     proc = Process(
-        name="P1",
+        original_label="P1",
         inp=set(),
         out=set(),
         cost=10.0,
@@ -44,7 +44,7 @@ def test_aggregate_goal_evaluate():
 
 def test_relational_goal_evaluate():
     proc = Process(
-        name="P1",
+        original_label="P1",
         inp=set(),
         out=set(),
         cost=10.0,

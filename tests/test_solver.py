@@ -1,6 +1,6 @@
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query
-from resource_flow.solver import RecipeSolver
+from resource_flow.solvers import RecipeSolver
 
 
 def test_solver_basic_detection_and_dag():

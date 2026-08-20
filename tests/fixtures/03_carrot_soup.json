@@ -1,0 +1,22 @@
+{
+  "process_scales": {
+    "peel": 1.0,
+    "roast_peelings": 1.0,
+    "simmer_soup": 1.0
+  },
+  "final_demands": {
+    "carrots": {
+      "value": 500.0,
+      "unit": "g"
+    },
+    "olive_oil": {
+      "value": 10.0,
+      "unit": "ml"
+    },
+    "vegetable_stock": {
+      "value": 500.0,
+      "unit": "ml"
+    }
+  },
+  "final_surplus": {}
+}

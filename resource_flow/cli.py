@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 import sys
 from .parser import RecipeParser
-from .solver import RecipeSolver
+from .solvers import RecipeSolver
 from .visualization import Visualizer
 
 

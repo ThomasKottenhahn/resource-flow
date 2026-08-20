@@ -1,0 +1,9 @@
+extract_essence [time: 15 min]: 
+    500 mg dragon_herb * [cost: 25.00], 2 l spring_water * [cost: 2.00] 
+    -> 1.5 l herb_essence;
+
+distill_elixir [time: 30 min]: 
+    500 ml herb_essence, 2 g crystal_dust * [cost: 10.00] 
+    -> 400 ml healing_elixir;
+
+make 800 ml healing_elixir;
