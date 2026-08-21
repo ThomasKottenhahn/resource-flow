@@ -2,13 +2,16 @@ program: program_item*
     ?program_item: statement ";"
                  | query ";"
                  | def_stmt ";"
+                 | let_stmt ";"
                  | module
 
     def_stmt: "def" resource
+    let_stmt: "let" IDENTIFIER "=" multiset_expr
 
     module: "mod" IDENTIFIER "{" module_item* "}"
 
     ?module_item: statement ";"
+                | let_stmt ";"
                 | module
 
     ?statement: transition
@@ -27,7 +30,8 @@ program: program_item*
     ?multiset_expr: multiset
                     | "(" multiset ")"
 
-    multiset: resource ("," resource)*
+    multiset: multiset_item ("," multiset_item)*
+    ?multiset_item: resource | IDENTIFIER -> macro_ref
 
     resource: NUMBER UNIT name BASIC? tags?
 

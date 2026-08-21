@@ -20,6 +20,27 @@ class ParseResult:
 
 class RecipeTransformer(Transformer):
     """Transforms the parsed syntax tree into domain models."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.macros = {}
+
+    def let_stmt(self, items):
+        """Parse a let statement."""
+        ident = str(items[0])
+        if ident in self.macros:
+            from lark.exceptions import VisitError
+            raise ValueError(f"Macro '{ident}' is already defined.")
+        self.macros[ident] = items[1]
+        return ("let", ident, items[1])
+
+    def macro_ref(self, items):
+        """Resolve a macro reference."""
+        ident = str(items[0])
+        if ident not in self.macros:
+            from lark.exceptions import VisitError
+            raise ValueError(f"Macro '{ident}' is used before declaration or not defined.")
+        return self.macros[ident]
+
     def min_goal(self, items):
         """Parse a minimize goal."""
         return ("min_goal", str(items[0]))
@@ -119,7 +140,13 @@ class RecipeTransformer(Transformer):
 
     def multiset(self, items):
         """Parse a multiset of resources."""
-        return set(items)
+        result = set()
+        for item in items:
+            if isinstance(item, set):
+                result.update(item)
+            else:
+                result.add(item)
+        return result
 
     def label(self, items):
         """Parse a label."""
@@ -411,9 +438,11 @@ class RecipeParser:
                     walk(item.items, current_path + [item.name])
                 elif isinstance(item, Resource):
                     defs.append(item)
+                elif isinstance(item, tuple) and item[0] == "let":
+                    pass  # Macros are already resolved during parsing
         walk(items, [])
         
-        exported_by_module = {}
+        exported_by_module: dict[str, set[Process]] = {}
         
         def get_exports(mod_key: str, visited: set) -> set[Process]:
             if mod_key in exported_by_module:
@@ -486,7 +515,7 @@ class RecipeParser:
             return exports
 
         global_scope_processes = get_exports("", set())
-        resources = set()
+        resources: set[Resource] = set()
         for p in global_scope_processes:
             resources.update(r for _, r in p.inp)
             resources.update(r for _, r in p.out)

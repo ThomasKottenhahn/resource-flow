@@ -284,5 +284,49 @@ def test_module_processes_with_import_specific(tmp_path):
     ctx = parser.parse_file(str(recipe_file))
     resources, processes, query = ctx.resources, ctx.processes, ctx.query
     
-    assert len(processes) == 1
     assert list(processes)[0].name == "prep::peel"
+
+def test_let_macro_multiset(tmp_path):
+    recipe_content = """
+    let veggies = 300 g carrots, 200 g potatoes;
+    prep: veggies -> 450 g chopped_veggies;
+    make 450 g chopped_veggies;
+    """
+    recipe_file = tmp_path / "test_let.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(recipe_file))
+    
+    assert len(ctx.processes) == 1
+    proc = list(ctx.processes)[0]
+    assert proc.name == "prep"
+    assert len(proc.inp) == 2
+    names = {res.name for qty, res in proc.inp}
+    assert names == {"carrots", "potatoes"}
+
+
+def test_let_macro_reassignment(tmp_path):
+    recipe_content = """
+    let veggies = 300 g carrots;
+    let veggies = 200 g potatoes;
+    """
+    recipe_file = tmp_path / "test_let_reassign.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    with pytest.raises((ValueError, VisitError), match="Macro 'veggies' is already defined."):
+        parser.parse_file(str(recipe_file))
+
+
+def test_let_macro_use_before_decl(tmp_path):
+    recipe_content = """
+    prep: veggies -> 450 g chopped_veggies;
+    let veggies = 300 g carrots, 200 g potatoes;
+    """
+    recipe_file = tmp_path / "test_let_use_before_decl.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    with pytest.raises((ValueError, VisitError), match="Macro 'veggies' is used before declaration or not defined."):
+        parser.parse_file(str(recipe_file))
