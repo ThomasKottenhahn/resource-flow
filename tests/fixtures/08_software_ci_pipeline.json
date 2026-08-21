@@ -1,0 +1,12 @@
+{
+  "process_scales": {
+    "serverless_build": 1.0
+  },
+  "final_demands": {
+    "source_code": {
+      "value": 1.0,
+      "unit": "piece"
+    }
+  },
+  "final_surplus": {}
+}

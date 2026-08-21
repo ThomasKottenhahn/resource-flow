@@ -1,0 +1,9 @@
+manual_solder [cost: 2.00, time: 45 min]: 
+    1 piece bare_pcb * [cost: 5.00], 10 piece microchips * [cost: 15.00] 
+    -> 1 piece assembled_pcb;
+
+smt_pick_and_place [cost: 12.00, time: 5 min]: 
+    1 piece bare_pcb * [cost: 5.00], 10 piece microchips * [cost: 15.00] 
+    -> 1 piece assembled_pcb;
+
+[cheapest] make 1 piece assembled_pcb;

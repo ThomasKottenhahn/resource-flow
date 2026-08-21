@@ -1,0 +1,13 @@
+corn_fermentation [cost: 15.00, time: 2 h, co2: 8.0 kg]: 
+    10 kg corn_feedstock * [cost: 5.00] 
+    -> 5 l crude_bioethanol;
+
+algae_processing [cost: 35.00, time: 1 h, co2: 1.5 kg]: 
+    10 kg algae_biomass * [cost: 12.00] 
+    -> 5 l crude_bioethanol;
+
+distill_fuel [cost: 5.00, time: 30 min, co2: 0.5 kg]: 
+    5 l crude_bioethanol 
+    -> 4.5 l refined_biofuel;
+
+[min co2, cheapest] make 9 l refined_biofuel;

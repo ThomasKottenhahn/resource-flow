@@ -1,6 +1,6 @@
 import pytest
 from resource_flow.parser import RecipeParser
-from resource_flow.solver import RecipeSolver
+from resource_flow.solvers import RecipeSolver
 
 def test_tool_route_chosen_when_available(tmp_path):
     dsl = """

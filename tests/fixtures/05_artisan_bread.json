@@ -1,0 +1,22 @@
+{
+  "process_scales": {
+    "bake": 1.0,
+    "make_commercial_dough": 1.0,
+    "rise_commercial": 1.0
+  },
+  "final_demands": {
+    "commercial_yeast": {
+      "value": 10.0,
+      "unit": "g"
+    },
+    "flour": {
+      "value": 500.0,
+      "unit": "g"
+    },
+    "water": {
+      "value": 300.0,
+      "unit": "ml"
+    }
+  },
+  "final_surplus": {}
+}

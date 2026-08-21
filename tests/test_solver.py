@@ -1,6 +1,6 @@
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query
-from resource_flow.solver import RecipeSolver
+from resource_flow.solvers import RecipeSolver
 
 
 def test_solver_basic_detection_and_dag():
@@ -42,7 +42,7 @@ def test_solver_basic_detection_and_dag():
     # Topological order: make_dough must be before bake_bread since bake_bread depends on dough
     assert processes_in_dag[0] == make_dough
     assert processes_in_dag[1] == bake_bread
-    assert set(basic_reqs.keys()) == {"flour", "water"}
+    assert basic_reqs == {"flour", "water"}
 
 
 def test_solver_globally_valid_basic_resource():
@@ -166,7 +166,7 @@ def test_solver_tag_matching_producer_selection():
 
     assert proc_org in dag
     assert proc_conv not in dag
-    assert set(basic_reqs.keys()) == {"carrots"}
+    assert basic_reqs == {"carrots"}
 
 
 def test_solver_negated_tag_rejection():

@@ -7,7 +7,7 @@ def test_dag_creation_and_node_edge_tracking():
     iron_ingot = Resource("iron_ingot")
 
     smelt = Process(
-        name="Smelt Iron",
+        original_label="Smelt Iron",
         inp={(Quantity(2.0, "kg"), iron_ore)},
         out={(Quantity(1.0, "kg"), iron_ingot)},
         cost=10.0,
@@ -35,7 +35,7 @@ def test_dag_calculate_metric_cost_and_time():
     iron_ingot = Resource("iron_ingot")
 
     smelt = Process(
-        name="Smelt Iron",
+        original_label="Smelt Iron",
         inp={(Quantity(2.0, "kg"), iron_ore)},
         out={(Quantity(1.0, "kg"), iron_ingot)},
         cost=10.0,
@@ -69,7 +69,7 @@ def test_dag_calculate_custom_metric_tags():
     prod = Resource("prod")
 
     proc = Process(
-        name="Make Product",
+        original_label="Make Product",
         inp={(Quantity(1.0, "kg"), raw_mat)},
         out={(Quantity(1.0, "kg"), prod)},
         tags={"manual", "co2: 3.0"},
@@ -102,7 +102,7 @@ def test_dag_calculate_custom_metric_tags():
 def test_dag_calculate_custom_metric_unit_conversion():
     prod = Resource("prod")
     proc = Process(
-        name="Make Product",
+        original_label="Make Product",
         inp=set(),
         out={(Quantity(1.0, "kg"), prod)},
         tags={"co2: 12500.0"},

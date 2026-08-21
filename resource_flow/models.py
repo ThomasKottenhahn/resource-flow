@@ -182,7 +182,7 @@ class Process:
     """Represents a production process transforming input resources into output resources."""
     def __init__(
         self,
-        name: str,
+        original_label: str,
         inp: set[tuple[Quantity, Resource]],
         out: set[tuple[Quantity, Resource]],
         cost: float = 0.0,
@@ -190,8 +190,11 @@ class Process:
         time_unit: str = "min",
         tags: set[str] | frozenset[str] | None = None,
         tools: set["Tool"] | frozenset["Tool"] | None = None,
+        fully_qualified_label: str | None = None,
     ) -> None:
-        self.name = name
+        self.original_label = original_label
+        self.fully_qualified_label = fully_qualified_label or original_label
+        self.name = self.fully_qualified_label
         self.inp = inp
         self.out = out
         self.cost = float(cost)
@@ -225,6 +228,43 @@ class Process:
             if not tool_found:
                 return False
         return True
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Process):
+            return False
+        return self.name == other.name
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+
+class Import:
+    """Represents a use statement for bringing module contents into scope."""
+    def __init__(self, module_name: str, items: list[str] | None = None, is_file: bool = False) -> None:
+        self.module_name = module_name
+        self.items = items
+        self.is_file = is_file
+
+    def __repr__(self) -> str:
+        name_repr = f'"{self.module_name}"' if self.is_file else self.module_name
+        if self.items:
+            return f"use {name_repr}::{{{', '.join(self.items)}}}"
+        return f"use {name_repr}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Import):
+            return False
+        return self.module_name == other.module_name and self.items == other.items and self.is_file == other.is_file
+
+
+class Module:
+    """Represents an inline module containing processes and other modules."""
+    def __init__(self, name: str, items: list[Any]) -> None:
+        self.name = name
+        self.items = items
+
+    def __repr__(self) -> str:
+        return f"mod {self.name} {{ {len(self.items)} items }}"
 
 
 class Goal:
@@ -403,17 +443,3 @@ class ProgramContext:
     processes: set[Process]
     query: Query
     defs: list[Resource]
-
-
-@dataclass
-class SolutionCandidate:
-    """Encapsulates the state of a potential graph solution during the solving pipeline."""
-    processes: list[Process]
-    basic_requirements: dict[str, Resource]
-    scales: dict[str, float] = field(default_factory=dict)
-    demands: dict[str, Quantity] = field(default_factory=dict)
-    surplus: dict[str, Quantity] = field(default_factory=dict)
-    dag_basic_resources: dict[str, Resource] = field(default_factory=dict)
-    dag: "DAG | None" = None
-    scores: tuple[Any, ...] = ()
-    tie_breaker: tuple[str, ...] = ()

@@ -1,0 +1,13 @@
+standard_docker_build [cost: 2.50, time: 20 min, co2: 1.2 kg]: 
+    1 piece source_code * [cost: 0.00] 
+    -> 1 piece container_image;
+
+cached_kaniko_build [cost: 4.00, time: 10 min, co2: 0.8 kg]: 
+    1 piece source_code * [cost: 0.00], 1 piece build_cache * [cost: 1.00] 
+    -> 1 piece container_image;
+
+serverless_build [cost: 4.00, time: 10 min, co2: 0.4 kg]: 
+    1 piece source_code * [cost: 0.00] 
+    -> 1 piece container_image;
+
+[time <= 15 min, min cost, min co2] make 1 piece container_image;

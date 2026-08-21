@@ -1,7 +1,7 @@
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query
 from resource_flow.parser import RecipeParser
-from resource_flow.solver import RecipeSolver
+from resource_flow.solvers import RecipeSolver
 
 
 def test_solver_goal_default_any():
@@ -229,7 +229,7 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solver import RecipeSolver
+    from resource_flow.solvers import RecipeSolver
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
@@ -288,7 +288,7 @@ def test_solver_goal_relational_constraints(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solver import RecipeSolver
+    from resource_flow.solvers import RecipeSolver
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
@@ -312,7 +312,7 @@ def test_solver_goal_infeasible_closest_match(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solver import RecipeSolver
+    from resource_flow.solvers import RecipeSolver
     import pytest
 
     parser = RecipeParser()

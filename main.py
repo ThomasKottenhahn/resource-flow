@@ -1,7 +1,8 @@
 from glob import glob
 from pathlib import Path
 from resource_flow.parser import RecipeParser
-from resource_flow.solver import RecipeSolver
+from resource_flow.solvers import RecipeSolver
+from resource_flow.visualization import Visualizer
 
 
 def run_compiler(file_path: str) -> None:
@@ -9,16 +10,14 @@ def run_compiler(file_path: str) -> None:
         parser = RecipeParser()
         ctx = parser.parse_file(file_path)
 
-        print("\n------------------------------------------------")
-        print("Solving Recipe...")
-        print("------------------------------------------------")
-
-        solver = RecipeSolver(ctx)
-        scales = solver.solve()
-        solver.print_plan(scales)
+        solver = RecipeSolver(ctx.processes, ctx.query)
+        dag = solver.solve()
+        
+        viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+        viz.print_plan()
 
         print("Mermaid Visualization:")
-        print(solver.generate_mermaid(scales))
+        print(viz.generate_mermaid())
     except Exception as e:
         print(f"Solver Error: {e}")
     print("------------------------------------------------\n")

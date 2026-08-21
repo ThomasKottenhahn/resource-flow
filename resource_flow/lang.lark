@@ -1,11 +1,24 @@
-program: (statement ";")*
-    ?statement: transition
-                | query
-                | def_stmt
+program: program_item*
+    ?program_item: statement ";"
+                 | query ";"
+                 | def_stmt ";"
+                 | module
 
     def_stmt: "def" resource
 
-    transition: proc_header? multiset_expr "->" multiset_expr tool_clause?
+    module: "mod" IDENTIFIER "{" module_item* "}"
+
+    ?module_item: statement ";"
+                | module
+
+    ?statement: transition
+              | import_stmt
+
+    import_stmt: "use" import_source ("::" import_path)?
+    ?import_source: IDENTIFIER | ESCAPED_STRING
+    ?import_path: IDENTIFIER | "{" IDENTIFIER ("," IDENTIFIER)* "}"
+
+    transition: proc_header multiset_expr "->" multiset_expr tool_clause?
 
     proc_header: (label tags? | tags) ":"
 
@@ -52,4 +65,5 @@ program: (statement ";")*
 
     %import common.WS
     %import common.NUMBER
+    %import common.ESCAPED_STRING
     %ignore WS

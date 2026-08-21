@@ -1,0 +1,36 @@
+{
+  "process_scales": {
+    "auto_thermal_molding": 1.0,
+    "bio_fuel_cell_synth": 1.0,
+    "cultured_protein_extract": 1.0,
+    "enzymatic_hydrolysis": 1.0,
+    "synth_vitamin_blend": 1.0
+  },
+  "final_demands": {
+    "bio_slurry": {
+      "value": 1200.0,
+      "unit": "g"
+    },
+    "bio_vitamins": {
+      "value": 10.0,
+      "unit": "g"
+    },
+    "enzyme_catalyst": {
+      "value": 50.0,
+      "unit": "g"
+    },
+    "mineral_salts": {
+      "value": 100.0,
+      "unit": "g"
+    },
+    "raw_carbs": {
+      "value": 1.0,
+      "unit": "kg"
+    },
+    "recycled_water": {
+      "value": 500.0,
+      "unit": "ml"
+    }
+  },
+  "final_surplus": {}
+}

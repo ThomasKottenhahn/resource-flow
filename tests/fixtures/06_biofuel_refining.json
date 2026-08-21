@@ -1,0 +1,13 @@
+{
+  "process_scales": {
+    "algae_processing": 2.0,
+    "distill_fuel": 2.0
+  },
+  "final_demands": {
+    "algae_biomass": {
+      "value": 20.0,
+      "unit": "kg"
+    }
+  },
+  "final_surplus": {}
+}
