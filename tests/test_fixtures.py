@@ -37,7 +37,8 @@ def test_fixture(rf_file: Path):
     
     # 1. Parse and run the solver
     parser = RecipeParser()
-    _, processes, query = parser.parse_file(str(rf_file))
+    ctx = parser.parse_file(str(rf_file))
+    processes, query = ctx.processes, ctx.query
     
     solver = RecipeSolver(processes, query)
     dag = solver.solve()

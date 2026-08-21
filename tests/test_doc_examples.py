@@ -84,7 +84,8 @@ def test_doc_example_parses_and_solves(rel_path: str, line_no: int, code: str) -
         tmp_path = tmp.name
 
     try:
-        _resources, processes, query = parser.parse_file(tmp_path)
+        ctx = parser.parse_file(tmp_path)
+        _resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
         # If the snippet defines a query, also verify the solver runs
         if query.query:

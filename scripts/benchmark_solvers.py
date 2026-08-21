@@ -41,7 +41,8 @@ def run_benchmarks(data_dir: Path):
         for solver_cls in solvers:
             try:
                 parser = RecipeParser()
-                _, processes, query = parser.parse_file(str(rf_file))
+                ctx = parser.parse_file(str(rf_file))
+                processes, query = ctx.processes, ctx.query
                 
                 start_time = time.perf_counter()
                 solver_instance = solver_cls(processes, query)

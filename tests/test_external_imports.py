@@ -13,7 +13,8 @@ def test_external_import_basic(tmp_path):
     """, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(main_file))
+    ctx = parser.parse_file(str(main_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     assert len(processes) == 1
     assert list(processes)[0].name == "sub.rf::peel"
@@ -33,7 +34,8 @@ def test_external_import_specific(tmp_path):
     """, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(main_file))
+    ctx = parser.parse_file(str(main_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     assert len(processes) == 1
     assert list(processes)[0].name == "sub.rf::p2"
@@ -55,7 +57,8 @@ def test_external_import_nested(tmp_path):
     """, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(main_file))
+    ctx = parser.parse_file(str(main_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     assert len(processes) == 2
     names = {p.name for p in processes}
@@ -73,7 +76,8 @@ def test_implicit_external_import_string(tmp_path):
     """, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(main_file))
+    ctx = parser.parse_file(str(main_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     assert len(processes) == 1
     assert list(processes)[0].name == "sub::peel"
@@ -91,7 +95,8 @@ def test_implicit_external_import_bare(tmp_path):
     """, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(main_file))
+    ctx = parser.parse_file(str(main_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     assert len(processes) == 1
     assert list(processes)[0].name == "sub::peel"
@@ -112,7 +117,8 @@ def test_implicit_external_import_collision(tmp_path):
     """, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(main_file))
+    ctx = parser.parse_file(str(main_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     names = {p.name for p in processes}
     # It should resolve to the local module, not the file

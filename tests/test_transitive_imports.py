@@ -16,7 +16,8 @@ def test_inline_transitive_imports(tmp_path):
     make 100 g C;
     """, encoding="utf-8")
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(main_file))
+    ctx = parser.parse_file(str(main_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
     
     names = {p.name for p in processes}
     # Do we expect oven::bake or kitchen::oven::bake?
@@ -49,7 +50,8 @@ def test_diamond_pattern_transitive_file_imports(tmp_path):
     """, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(main_file))
+    ctx = parser.parse_file(str(main_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
     
     names = {p.name for p in processes}
     assert "common.rf::p_common" in names

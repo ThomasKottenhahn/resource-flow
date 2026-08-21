@@ -13,7 +13,8 @@ def test_parser_with_simple_recipe(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     # Verify processes
     assert len(processes) == 2
@@ -43,6 +44,8 @@ def test_parser_with_simple_recipe(tmp_path):
     assert r_target.basic is False
     assert q_target == Quantity(700.0, "g")
 
+
+
 def test_parser_with_tags_and_metrics(tmp_path):
     recipe_content = """
     cut_carrots [cost: 1.50, time: 10 min, manual]: 500 g carrots * [cost: 2.00, !cut, organic] -> 450 g carrots [cut, organic];
@@ -52,7 +55,8 @@ def test_parser_with_tags_and_metrics(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     proc = list(processes)[0]
     assert proc.name == "cut_carrots"
@@ -80,7 +84,8 @@ def test_parser_basic_as_tag(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     proc = list(processes)[0]
     q_in, r_in = list(proc.inp)[0]
@@ -112,7 +117,8 @@ def test_parser_multiple_positive_and_negated_tags(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     proc = list(processes)[0]
     assert proc.name == "prep"
@@ -143,7 +149,8 @@ def test_batch_cost_normalization_parsing(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     proc = list(processes)[0]
     q_in, r_in = list(proc.inp)[0]
@@ -175,7 +182,8 @@ def test_parse_general_goals(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    _, _, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    query = ctx.query
 
     assert query.goals == (
         AggregateGoal("min", "manual_labour"),
@@ -196,7 +204,8 @@ def test_parser_tools(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     assert len(processes) == 1
     proc = list(processes)[0]
@@ -226,7 +235,8 @@ def test_module_processes_not_in_scope(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
     
     # process inside module should not be in the returned set
     assert len(processes) == 1
@@ -246,7 +256,8 @@ def test_module_processes_with_import_all(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
     
     assert len(processes) == 2
     process_names = {p.name for p in processes}
@@ -270,7 +281,8 @@ def test_module_processes_with_import_specific(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
     
     assert len(processes) == 1
     assert list(processes)[0].name == "prep::peel"

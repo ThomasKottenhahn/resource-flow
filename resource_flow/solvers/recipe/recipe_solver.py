@@ -1,44 +1,75 @@
+from __future__ import annotations
 from ...dag import DAG, DAGEdge, DAGNode
-from ...models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource
+from ...models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, ProgramContext
 from typing import Any
 from ..base import Solver
 
 class RecipeSolver(Solver):
     """Orchestrates the resolution of queries by searching topologies, scaling processes, and evaluating goals."""
-    def __init__(self, processes: set[Process], query: Query) -> None:
-        super().__init__(processes, query)
+    def __init__(
+        self,
+        ctx: ProgramContext | set[Process] | None = None,
+        processes: set[Process] | Query | None = None,
+        query: Query | list[Resource] | None = None,
+        defs: list[Resource] | None = None,
+    ) -> None:
+        if isinstance(ctx, ProgramContext):
+            actual_processes = ctx.processes
+            actual_query = ctx.query
+            actual_defs = ctx.defs
+        elif ctx is not None:
+            # Called as RecipeSolver(processes, query)
+            actual_defs = query if isinstance(query, list) else defs
+            actual_query = processes
+            actual_processes = ctx
+        else:
+            actual_processes = set()
+            actual_query = Query(set())
+            actual_defs = defs
+
+        super().__init__(actual_processes, actual_query, actual_defs)
         
         filtered_processes = []
-        for p in processes:
+        for p in actual_processes:
             if p.has_required_tools(self.query.tools):
                 filtered_processes.append(p)
                 
-        self._all_processes = sorted(processes, key=lambda p: p.name)
+        self._all_processes = sorted(actual_processes, key=lambda p: p.name)
         self.processes = sorted(filtered_processes, key=lambda p: p.name)
         self.basic_resource_names = self._identify_basic_resources()
         self.processes_in_dag: list[Process] = []
         self.basic_requirements: set[str] = set()
         self._result_dag: DAG | None = None
 
+    def _add_basic(self, r: Resource) -> None:
+        """Register a resource as a basic resource."""
+        if r.name not in self.basic_resources:
+            self.basic_resources[r.name] = [r]
+        elif r.cost > 0 and not any(br.cost == r.cost and br.tags == r.tags for br in self.basic_resources[r.name]):
+            self.basic_resources[r.name].append(r)
+
     def _identify_basic_resources(self) -> set[str]:
-        """Discover all resources marked as basic across processes and queries."""
+        """Discover all resources marked as basic across processes, queries, and explicit defs."""
         basics = set()
+
+        # Populate from explicit defs
+        for d in self.defs:
+            basics.add(d.name)
+            self._add_basic(d)
+
         for p in self.processes:
             for _, r in p.inp:
                 if r.basic:
                     basics.add(r.name)
-                    if r.name not in self.basic_resources or r.cost > 0:
-                        self.basic_resources[r.name] = r
+                    self._add_basic(r)
             for _, r in p.out:
                 if r.basic:
                     basics.add(r.name)
-                    if r.name not in self.basic_resources or r.cost > 0:
-                        self.basic_resources[r.name] = r
+                    self._add_basic(r)
         for _, r in self.query.query:
             if r.basic:
                 basics.add(r.name)
-                if r.name not in self.basic_resources or r.cost > 0:
-                    self.basic_resources[r.name] = r
+                self._add_basic(r)
         return basics
 
     def is_basic(self, resource_name: str) -> bool:
@@ -60,9 +91,9 @@ class RecipeSolver(Solver):
         if res.basic:
             return True
         if res.name in self.basic_resources:
-            basic_res = self.basic_resources[res.name]
-            if self._matches_tags(res, basic_res):
-                return True
+            for basic_res in self.basic_resources[res.name]:
+                if self._matches_tags(res, basic_res):
+                    return True
         return False
 
     def find_producer(self, target: Resource | str) -> Process | None:
@@ -244,7 +275,9 @@ class RecipeSolver(Solver):
 
         for name, qty in demands.items():
             dag_res = dag_basic_resources.get(name)
-            global_res = self.basic_resources.get(name)
+            global_res_list = self.basic_resources.get(name, [])
+            # Pick the best global basic resource (prefer one with cost > 0)
+            global_res = next((r for r in global_res_list if r.cost > 0), global_res_list[0] if global_res_list else None)
             if dag_res and dag_res.cost > 0:
                 basic_res: Resource | None = dag_res
             elif global_res and global_res.cost > 0:

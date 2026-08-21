@@ -14,9 +14,9 @@ def test_tool_route_chosen_when_available(tmp_path):
     recipe_file.write_text(dsl)
     
     parser = RecipeParser()
-    _, procs, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
     
-    solver = RecipeSolver(procs, query)
+    solver = RecipeSolver(ctx)
     dag = solver.solve()
     
     processes_used = [node.process.name for node in dag.nodes if node.process]
@@ -35,9 +35,9 @@ def test_fallback_route_chosen_when_tool_missing(tmp_path):
     recipe_file.write_text(dsl)
     
     parser = RecipeParser()
-    _, procs, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
     
-    solver = RecipeSolver(procs, query)
+    solver = RecipeSolver(ctx)
     dag = solver.solve()
     
     processes_used = [node.process.name for node in dag.nodes if node.process]
@@ -56,9 +56,9 @@ def test_tool_quantity_matching(tmp_path):
     recipe_file.write_text(dsl)
     
     parser = RecipeParser()
-    _, procs, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
     
-    solver = RecipeSolver(procs, query)
+    solver = RecipeSolver(ctx)
     dag = solver.solve()
     
     processes_used = [node.process.name for node in dag.nodes if node.process]
@@ -82,9 +82,9 @@ def test_solver_fallback_reports_minimal_additional_tools(tmp_path):
     recipe_file.write_text(recipe)
 
     parser = RecipeParser()
-    _, procs, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
     
-    solver = RecipeSolver(procs, query)
+    solver = RecipeSolver(ctx)
 
     # query has no tools available, so both routes fail
     with pytest.raises(ValueError, match="No solution found with available tools. Closest solution requires additional tools: microwave"):
@@ -101,8 +101,8 @@ def test_solver_fallback_reports_minimal_additional_tools(tmp_path):
     recipe_file2 = tmp_path / "fallback_works.rf"
     recipe_file2.write_text(recipe_with_tool)
 
-    _, procs2, query2 = parser.parse_file(str(recipe_file2))
-    solver2 = RecipeSolver(procs2, query2)
+    ctx2 = parser.parse_file(str(recipe_file2))
+    solver2 = RecipeSolver(ctx2)
     # If we provide microwave, Route B works!
     dag = solver2.solve()
     processes_used = [node.process.name for node in dag.nodes if node.process]
@@ -120,9 +120,9 @@ def test_shared_tool_across_processes(tmp_path):
     recipe_file.write_text(dsl)
     
     parser = RecipeParser()
-    _, procs, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
     
-    solver = RecipeSolver(procs, query)
+    solver = RecipeSolver(ctx)
     dag = solver.solve()
     
     processes_used = [node.process.name for node in dag.nodes if node.process]

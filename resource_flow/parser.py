@@ -1,6 +1,6 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext
 from dataclasses import dataclass, field
 
 @dataclass
@@ -15,6 +15,7 @@ class ParseResult:
     query: Query = field(default_factory=lambda: Query(set()))
     owned_processes: list[Process] = field(default_factory=list)
     reexported_processes: list[Process] = field(default_factory=list)
+    defs: list[Resource] = field(default_factory=list)
 
 
 class RecipeTransformer(Transformer):
@@ -103,10 +104,6 @@ class RecipeTransformer(Transformer):
         cost_unit = None
 
         if cost > 0:
-            if not is_basic:
-                raise ValueError(
-                    f"Cost can only be specified on basic resources, but '{name}' is not basic"
-                )
             base_qty = qty.to_base_unit()
             unit_cost = cost / base_qty.val
             cost_unit = base_qty.unit
@@ -220,6 +217,13 @@ class RecipeTransformer(Transformer):
                         else:
                             proc_tags.add(f"{key}:{val_num}")
 
+        # Ensure no non-basic resource has cost in the transition
+        for qty, res in (inp | out):
+            if res.cost > 0 and not res.basic:
+                raise ValueError(
+                    f"Cost can only be specified on basic resources, but '{res.name}' is not basic"
+                )
+
         return Process(
             name,
             inp,
@@ -248,6 +252,13 @@ class RecipeTransformer(Transformer):
                 else:
                     multiset = item
 
+        # Ensure no non-basic resource has cost in the query
+        for qty, res in multiset:
+            if res.cost > 0 and not res.basic:
+                raise ValueError(
+                    f"Cost can only be specified on basic resources, but '{res.name}' is not basic"
+                )
+
         goals = []
         if parsed_tags:
             for t in parsed_tags:
@@ -275,6 +286,15 @@ class RecipeTransformer(Transformer):
 
         return Query(multiset, goals=goals if goals else ("any",), tools=using)
 
+
+    def def_stmt(self, items):
+        """Parse a standalone basic resource definition."""
+        qty, resource = items[0]
+        # def enforces basic implicitly even without a * 
+        tags = set(resource.tags)
+        tags.add("basic")
+        resource.tags = frozenset(tags)
+        return resource
 
     def program_item(self, items):
         return items[0]
@@ -331,10 +351,15 @@ class RecipeParser:
         first_part = rest.split("::")[0]
         return first_part in imp.items
 
-    def parse_file(self, file_path: str) -> tuple[set[Resource], set[Process], Query]:
-        """Parse a DSL file and return all discovered resources, processes, and the combined query."""
+    def parse_file(self, file_path: str) -> ProgramContext:
+        """Parse a DSL file and return the parsed program context."""
         res = self._parse_file_internal(file_path, {})
-        return res.resources, res.global_processes, res.query
+        return ProgramContext(
+            resources=res.resources,
+            processes=res.global_processes,
+            query=res.query,
+            defs=res.defs,
+        )
 
     def _parse_file_internal(self, file_path: str, _cache: dict[str, ParseResult]) -> ParseResult:
         target_resolved = str(Path(file_path).resolve())
@@ -356,6 +381,7 @@ class RecipeParser:
         all_owned_processes: list[Process] = []
         all_reexported_processes: list[Process] = []
         queries: list[Query] = []
+        defs: list[Resource] = []
         
         # Map module paths to their direct contents
         modules_map: dict[str, ModuleScope] = {}
@@ -383,6 +409,8 @@ class RecipeParser:
                     modules_map[mod_key].imports.append(item)
                 elif isinstance(item, Module):
                     walk(item.items, current_path + [item.name])
+                elif isinstance(item, Resource):
+                    defs.append(item)
         walk(items, [])
         
         exported_by_module = {}
@@ -462,6 +490,8 @@ class RecipeParser:
         for p in global_scope_processes:
             resources.update(r for _, r in p.inp)
             resources.update(r for _, r in p.out)
+        for d in defs:
+            resources.add(d)
             
         combined_query = Query(set())
         for q in queries:
@@ -473,7 +503,8 @@ class RecipeParser:
             global_processes=global_scope_processes,
             query=combined_query,
             owned_processes=all_owned_processes,
-            reexported_processes=all_reexported_processes
+            reexported_processes=all_reexported_processes,
+            defs=defs,
         )
         _cache[target_resolved] = res
         return res

@@ -1,7 +1,10 @@
 program: program_item*
     ?program_item: statement ";"
                  | query ";"
+                 | def_stmt ";"
                  | module
+
+    def_stmt: "def" resource
 
     module: "mod" IDENTIFIER "{" module_item* "}"
 

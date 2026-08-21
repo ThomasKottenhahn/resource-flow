@@ -29,9 +29,9 @@ def main() -> None:
 
     try:
         recipe_parser = RecipeParser()
-        _, processes, query = recipe_parser.parse_file(args.input)
+        ctx = recipe_parser.parse_file(args.input)
 
-        solver = RecipeSolver(processes, query)
+        solver = RecipeSolver(ctx)
         dag = solver.solve()
         viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
         mermaid_text = viz.generate_mermaid(time_unit=args.time_unit)

@@ -8,13 +8,9 @@ from resource_flow.visualization import Visualizer
 def run_compiler(file_path: str) -> None:
     try:
         parser = RecipeParser()
-        _, processes, query = parser.parse_file(file_path)
+        ctx = parser.parse_file(file_path)
 
-        print("\n------------------------------------------------")
-        print("Solving Recipe...")
-        print("------------------------------------------------")
-
-        solver = RecipeSolver(processes, query)
+        solver = RecipeSolver(ctx.processes, ctx.query)
         dag = solver.solve()
         
         viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)

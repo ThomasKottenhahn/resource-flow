@@ -194,7 +194,8 @@ def test_solver_tagged_recipe_end_to_end(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     solver = RecipeSolver(processes, query)
     scales = solver.solve()
@@ -258,7 +259,8 @@ def test_solver_batch_cost_unit_conversion(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    resources, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     solver = RecipeSolver(processes, query)
     dag = solver.solve()
@@ -406,7 +408,8 @@ def test_solver_tagged_resource_and_multi_query_graph_edges(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    _, processes, query = parser.parse_file(str(recipe_file))
+    ctx = parser.parse_file(str(recipe_file))
+    processes, query = ctx.processes, ctx.query
 
     solver = RecipeSolver(processes, query)
     dag = solver.solve()
@@ -443,7 +446,8 @@ def test_basic_resource_cost_isolation(tmp_path):
 
     from resource_flow.parser import RecipeParser
     parser = RecipeParser()
-    _, procs, q = parser.parse_file(str(f))
+    ctx = parser.parse_file(str(f))
+    procs, q = ctx.processes, ctx.query
     solver = RecipeSolver(procs, q)
     dag = solver.solve()
 

@@ -4,10 +4,11 @@ from ..models import Process, Query, Quantity, Resource
 
 class Solver(abc.ABC):
     """Abstract base class for all solvers in Resource Flow."""
-    def __init__(self, processes: set[Process], query: Query) -> None:
+    def __init__(self, processes: set[Process], query: Query, defs: list[Resource] | None = None) -> None:
         self.processes = processes
         self.query = query
-        self.basic_resources: dict[str, Resource] = {}
+        self.defs = defs or []
+        self.basic_resources: dict[str, list[Resource]] = {}
         self.final_demands: dict[str, Quantity] = {}
         self.final_surplus: dict[str, Quantity] = {}
 

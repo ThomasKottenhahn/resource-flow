@@ -104,6 +104,20 @@ make 500 ml smoothie;
 - **Add custom quantitative tags to any resource or process.** `[co2: 0.8 kg]` adds a numeric CO₂ metric. The solver aggregates these metrics across the graph just like cost. You can optimize for them later with `[min co2]`.
 - **Add custom qualitative tags to processes.** `[manual_labour]` carries no numeric value, but the solver can count how many processes in a solution carry it. We use this in the next step.
 
+### Global definitions (`def`)
+
+You can define basic resources globally using the `def` keyword. These resources are automatically basic resources. You do not need an asterisk.
+
+```text
+def 300 g carrots [cost: 20, organic];
+def 200 g carrots [cost: 10, frozen];
+
+boil: 100 g carrots -> 100 g carrots [boiled];
+cut: 100 g carrots [!frozen] -> 80 g carrots [organic, cut];
+```
+
+In this example, the solver has two initial sources to choose from: 300g of organic carrots and 200g of frozen carrots. If you then query for boiled carrots, the solver will explore both paths. If you query for cut carrots, the solver will only explore the path using organic carrots.
+
 ---
 
 ## Step 5. Solver goals
