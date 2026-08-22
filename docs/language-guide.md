@@ -118,6 +118,19 @@ cut: 100 g carrots [!frozen] -> 80 g carrots [organic, cut];
 
 In this example, the solver has two initial sources to choose from: 300g of organic carrots and 200g of frozen carrots. If you then query for boiled carrots, the solver will explore both paths. If you query for cut carrots, the solver will only explore the path using organic carrots.
 
+### Aliasing (`let`)
+
+You can define aliases for multisets (groups of resources) to reuse them across multiple processes using the `let` keyword. 
+
+```text
+let standard_tools = 1 piece knife, 1 piece pan;
+let veggies = 300 g carrots *, 200 g potatoes *;
+
+chop: veggies -> 450 g chopped_veggies with standard_tools;
+```
+
+These aliases act as macros: wherever you reference the alias name, the parser substitutes it with the exact resources defined. Macros are immutable and cannot be reassigned, and they must be declared before they are used.
+
 ---
 
 ## Step 5. Solver goals
