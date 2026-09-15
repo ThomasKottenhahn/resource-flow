@@ -388,7 +388,21 @@ class RecipeParser:
             defs=res.defs,
         )
 
+    def parse_string(self, content: str, file_path: str) -> ProgramContext:
+        """Parse a DSL string with a given base file path and return the parsed program context."""
+        res = self._parse_string_internal(content, file_path, {})
+        return ProgramContext(
+            resources=res.resources,
+            processes=res.global_processes,
+            query=res.query,
+            defs=res.defs,
+        )
+
     def _parse_file_internal(self, file_path: str, _cache: dict[str, ParseResult]) -> ParseResult:
+        content = Path(file_path).read_text(encoding="utf-8")
+        return self._parse_string_internal(content, file_path, _cache)
+
+    def _parse_string_internal(self, content: str, file_path: str, _cache: dict[str, ParseResult]) -> ParseResult:
         target_resolved = str(Path(file_path).resolve())
         if target_resolved in _cache:
             cached = _cache[target_resolved]
@@ -401,7 +415,6 @@ class RecipeParser:
         # Add empty entry to break circular imports immediately
         _cache[target_resolved] = ParseResult()
 
-        content = Path(file_path).read_text(encoding="utf-8")
         tree = self.lark.parse(content)
         items = RecipeTransformer().transform(tree)
 
