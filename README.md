@@ -32,6 +32,24 @@ Install with pip:
 pip install git+https://github.com/ThomasKottenhahn/resource-flow.git
 ```
 
+## VS Code Extension
+
+Resource Flow comes with a Language Server Protocol (LSP) extension for VS Code that provides syntax highlighting, real-time diagnostics, and auto-completion.
+
+To install it:
+1. Ensure the `rflow` Python package is installed (see above) so the Language Server can run.
+2. Build the extension package from source:
+   ```bash
+   cd vscode-extension/resource-flow
+   npm install -g @vscode/vsce
+   vsce package
+   ```
+3. Install the generated `.vsix` file in VS Code:
+   - Go to the **Extensions** view (`Ctrl+Shift+X`)
+   - Click the `...` menu in the top right corner
+   - Select **Install from VSIX...**
+   - Choose the `resource-flow-0.0.1.vsix` file you just built.
+
 
 ## Quick Start CLI Usage
 
@@ -55,9 +73,11 @@ This saves:
 
 ## Roadmap
 
-- **Modules**: Organize code into different modules and solve queries with processes from other modules.
-- **Stock**: Define which resources are in stock and use up stock before buying new resources.
+- **Suppliers**: Get resources from different suppliers and include acquisition in the plan.
 - **Parralel Processes**: Allow for multiple processes to run in parralel if tools are available.
+- **Deadlines**: Finish a query by a specified time.
+- **Rest**: Include min and max rest times for resources.
+- **Stock**: Define which resources are in stock and use up stock before buying new resources.
 
 ## License
 
