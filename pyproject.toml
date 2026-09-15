@@ -9,7 +9,8 @@ description = "Resource Flow Compiler - compiles resource recipes and resolves D
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "lark>=1.0.0"
+    "lark>=1.0.0",
+    "pygls>=1.0.0",
 ]
 
 [project.optional-dependencies]

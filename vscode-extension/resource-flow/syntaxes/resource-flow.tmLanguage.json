@@ -1,0 +1,75 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Resource Flow",
+    "patterns": [
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#tags"
+        }
+    ],
+    "repository": {
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.resource-flow",
+                    "match": "\\b(def|let|mod|use|with|using|make|min|max)\\b"
+                },
+                {
+                    "name": "keyword.operator.resource-flow",
+                    "match": "(->|<=|<|>=|>|==|!=|=)"
+                }
+            ]
+        },
+        "strings": {
+            "name": "string.quoted.double.resource-flow",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.resource-flow",
+                    "match": "\\\\."
+                }
+            ]
+        },
+        "numbers": {
+            "name": "constant.numeric.resource-flow",
+            "match": "\\b\\d+(\\.\\d+)?\\b"
+        },
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.resource-flow",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.resource-flow",
+                    "begin": "/\\*",
+                    "end": "\\*/"
+                }
+            ]
+        },
+        "tags": {
+            "name": "meta.tag.resource-flow",
+            "begin": "\\[",
+            "end": "\\]",
+            "patterns": [
+                {
+                    "name": "entity.name.tag.resource-flow",
+                    "match": "\\b(min|max|!|[a-zA-Z0-9_]+)\\b"
+                }
+            ]
+        }
+    },
+    "scopeName": "source.resource-flow"
+}
