@@ -22,6 +22,16 @@ class ParseResult:
     macros: dict[str, set] = field(default_factory=dict)
     reexported_macros: dict[str, set] = field(default_factory=dict)
 
+@dataclass(frozen=True)
+class MacroRef:
+    ident: str
+
+@dataclass
+class ModuleExports:
+    processes: set[Process] = field(default_factory=set)
+    defs: list[Resource] = field(default_factory=list)
+    macros: dict[str, set] = field(default_factory=dict)
+
 
 class RecipeTransformer(Transformer):
     """Transforms the parsed syntax tree into domain models."""
@@ -41,7 +51,7 @@ class RecipeTransformer(Transformer):
     def macro_ref(self, items):
         """Resolve a macro reference."""
         ident = str(items[0])
-        return ("macro_ref", ident)
+        return MacroRef(ident)
 
     def min_goal(self, items):
         """Parse a minimize goal."""
@@ -146,8 +156,6 @@ class RecipeTransformer(Transformer):
         for item in items:
             if isinstance(item, set):
                 result.update(item)
-            elif isinstance(item, tuple) and item[0] == "macro_ref":
-                result.add(item)
             else:
                 result.add(item)
         return result
@@ -250,13 +258,11 @@ class RecipeTransformer(Transformer):
 
         # Ensure no non-basic resource has cost in the transition
         for item in (inp | out):
-            if isinstance(item, tuple) and item[0] == "macro_ref":
+            if isinstance(item, MacroRef):
                 continue
             qty, res = item
-            if res.cost > 0 and not res.basic:
-                raise ValueError(
-                    f"Cost can only be specified on basic resources, but '{res.name}' is not basic"
-                )
+            if not res.basic and res.cost > 0:
+                raise ValueError(f"Non-basic resource '{res.name}' cannot have a cost in a transition.")
 
         return Process(
             name,
@@ -466,40 +472,42 @@ class RecipeParser:
                     modules_map[mod_key].macros[item[1]] = item[2]
         walk(items, [])
         
-        exported_by_module: dict[str, tuple[set[Process], list[Resource], dict[str, set]]] = {}
+        exported_by_module: dict[str, ModuleExports] = {}
         
-        def get_exports(mod_key: str, visited: set) -> tuple[set[Process], list[Resource], dict[str, set]]:
+        def filter_list(items, allowed_names):
+            if not allowed_names: return list(items)
+            return [x for x in items if x.name in allowed_names]
+
+        def filter_dict(items, allowed_names):
+            if not allowed_names: return dict(items)
+            return {k: v for k, v in items.items() if k in allowed_names}
+            
+        def get_exports(mod_key: str, visited: set) -> ModuleExports:
             if mod_key in exported_by_module:
                 return exported_by_module[mod_key]
             
             if mod_key in visited:
-                return set(), [], {}
+                return ModuleExports()
             visited.add(mod_key)
             
-            exports = set()
-            exported_defs = []
-            exported_macros = {}
+            exports = ModuleExports()
             if mod_key in modules_map:
-                exports.update(modules_map[mod_key].processes)
-                exported_defs.extend(modules_map[mod_key].defs)
-                exported_macros.update(modules_map[mod_key].macros)
+                exports.processes.update(modules_map[mod_key].processes)
+                exports.defs.extend(modules_map[mod_key].defs)
+                exports.macros.update(modules_map[mod_key].macros)
                 
                 for imp in modules_map[mod_key].imports:
                     # 1. Try local module first if it's not explicitly a file (string literal)
                     is_local_module = not imp.is_file and imp.module_name in modules_map
                     if is_local_module:
                         target_mod_key = imp.module_name
-                        target_exports, target_defs, target_macros = get_exports(target_mod_key, visited)
+                        target_exports = get_exports(target_mod_key, visited)
                         
-                        for p in target_exports:
+                        for p in target_exports.processes:
                             if self._should_import(p, imp, prefix=target_mod_key):
-                                exports.add(p)
-                        for d in target_defs:
-                            if not imp.items or d.name in imp.items:
-                                exported_defs.append(d)
-                        for m_name, m_val in target_macros.items():
-                            if not imp.items or m_name in imp.items:
-                                exported_macros[m_name] = m_val
+                                exports.processes.add(p)
+                        exports.defs.extend(filter_list(target_exports.defs, imp.items))
+                        exports.macros.update(filter_dict(target_exports.macros, imp.items))
                     else:
                         # 2. File import or fallback for bare module that wasn't local
                         target_path = Path(file_path).parent / imp.module_name
@@ -510,14 +518,9 @@ class RecipeParser:
                             if target_path_with_ext.exists():
                                 target_path = target_path_with_ext
                             elif imp.is_file:
-                                # Keep the original target_path if it's explicitly a string and we didn't find .rf
-                                # Actually, if implicit .rf is requested for "path/to/mod", we should just append it
-                                # wait, what if the user wrote use "path/to/mod"; and mod without .rf doesn't exist?
-                                # The spec says: use "path/to/mod"; resolves to path/to/mod.rf
                                 target_path = target_path_with_ext
 
                         if not target_path.exists() and not imp.is_file:
-                            # if use mod; and neither mod nor mod.rf exists locally, we should probably append .rf anyway so the error message mentions the right file
                             target_path = target_path.with_suffix(".rf")
                             
                         target_resolved_path = str(target_path.resolve())
@@ -536,40 +539,36 @@ class RecipeParser:
                             new_p.name = new_p.fully_qualified_label
                             
                             if self._should_import(p, imp):
-                                exports.add(new_p)
+                                exports.processes.add(new_p)
                                 all_reexported_processes.append(new_p)
                             
                         for p in target_res.reexported_processes:
                             if self._should_import(p, imp):
-                                exports.add(p)
+                                exports.processes.add(p)
                                 all_reexported_processes.append(p)
                                 
-                        for d in target_res.defs + target_res.reexported_defs:
-                            if not imp.items or d.name in imp.items:
-                                exported_defs.append(d)
-                                
-                        for m_name, m_val in target_res.macros.items():
-                            if not imp.items or m_name in imp.items:
-                                exported_macros[m_name] = m_val
-                                
-                        for m_name, m_val in target_res.reexported_macros.items():
-                            if not imp.items or m_name in imp.items:
-                                exported_macros[m_name] = m_val
+                        exports.defs.extend(filter_list(target_res.defs + target_res.reexported_defs, imp.items))
+                        exports.macros.update(filter_dict(target_res.macros, imp.items))
+                        exports.macros.update(filter_dict(target_res.reexported_macros, imp.items))
                                     
-            exported_by_module[mod_key] = (exports, exported_defs, exported_macros)
+            exported_by_module[mod_key] = exports
             visited.remove(mod_key)
-            return exports, exported_defs, exported_macros
+            return exports
 
-        global_scope_processes, global_scope_defs, global_scope_macros = get_exports("", set())
+        global_exports = get_exports("", set())
         
-        def expand_multiset(mset: set, available_macros: dict) -> set:
+        def expand_multiset(mset: set, available_macros: dict, visited_macros: set = None) -> set:
+            if visited_macros is None:
+                visited_macros = set()
             expanded = set()
             for item in mset:
-                if isinstance(item, tuple) and item[0] == "macro_ref":
-                    ident = item[1]
+                if isinstance(item, MacroRef):
+                    ident = item.ident
                     if ident not in available_macros:
                         raise ValueError(f"Macro '{ident}' is used before declaration or not defined.")
-                    expanded.update(expand_multiset(available_macros[ident], available_macros))
+                    if ident in visited_macros:
+                        raise ValueError(f"Cyclic macro definition detected: {' -> '.join(list(visited_macros) + [ident])}")
+                    expanded.update(expand_multiset(available_macros[ident], available_macros, visited_macros | {ident}))
                 else:
                     expanded.add(item)
             return expanded
@@ -577,7 +576,7 @@ class RecipeParser:
         all_macros = {}
         if "" in modules_map:
             all_macros.update(modules_map[""].macros)
-        all_macros.update(global_scope_macros)
+        all_macros.update(global_exports.macros)
 
         for p in all_owned_processes + all_reexported_processes:
             p.inp = expand_multiset(p.inp, all_macros)
@@ -589,20 +588,20 @@ class RecipeParser:
             combined_query.add(q)
             
         resources: set[Resource] = set()
-        for p in global_scope_processes:
+        for p in global_exports.processes:
             resources.update(r for _, r in p.inp)
             resources.update(r for _, r in p.out)
-        for d in global_scope_defs:
+        for d in global_exports.defs:
             resources.add(d)
         resources.update(r for _, r in combined_query.query)
             
-        reexported_defs = list(set(global_scope_defs) - set(defs))
+        reexported_defs = list(set(global_exports.defs) - set(defs))
         local_macros = modules_map[""].macros if "" in modules_map else {}
-        reexported_macros = {k: v for k, v in global_scope_macros.items() if k not in local_macros}
+        reexported_macros = {k: v for k, v in global_exports.macros.items() if k not in local_macros}
             
         res = ParseResult(
             resources=resources,
-            global_processes=global_scope_processes,
+            global_processes=global_exports.processes,
             query=combined_query,
             owned_processes=all_owned_processes,
             reexported_processes=all_reexported_processes,

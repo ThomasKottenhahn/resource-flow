@@ -167,7 +167,7 @@ def test_non_basic_resource_cost_forbidden(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    with pytest.raises((ValueError, VisitError), match="Cost can only be specified on basic resources"):
+    with pytest.raises((ValueError, VisitError), match="Non-basic resource 'carrots' cannot have a cost in a transition."):
         parser.parse_file(str(recipe_file))
 
 
@@ -417,4 +417,17 @@ def test_selective_module_exports(tmp_path):
     
     with pytest.raises(ValueError, match="Macro 'meat' is used before declaration or not defined."):
         parser.parse_file(str(bad_file))
+
+def test_cyclic_macro_definition(tmp_path):
+    recipe_content = """
+    let a = b;
+    let b = a;
+    prep: a -> 1 kg done;
+    """
+    recipe_file = tmp_path / "test_cycle.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    with pytest.raises(ValueError, match="Cyclic macro definition detected: (a -> b -> a|b -> a -> b)"):
+        parser.parse_file(str(recipe_file))
 
