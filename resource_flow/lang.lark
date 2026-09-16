@@ -12,6 +12,7 @@ program: program_item*
 
     ?module_item: statement ";"
                 | let_stmt ";"
+                | def_stmt ";"
                 | module
 
     ?statement: transition

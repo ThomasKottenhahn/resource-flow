@@ -370,3 +370,51 @@ def test_module_exports(tmp_path):
     # Verify the macro was exported and evaluated
     p = next(p for p in ctx.processes if p.name == "prep")
     assert any(res.name == "potatoes" for qty, res in p.inp)
+
+def test_inline_module_exports(tmp_path):
+    recipe_content = """
+    mod supplier {
+        def 1 kg potatoes *;
+        let veggies = 1 kg potatoes;
+    }
+    use supplier;
+    prep: veggies -> 1 kg chopped_veggies;
+    """
+    recipe_file = tmp_path / "test_inline_exports.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(recipe_file))
+    
+    assert any(d.name == "potatoes" and d.basic for d in ctx.defs)
+    p = next(p for p in ctx.processes if p.name == "prep")
+    assert any(res.name == "potatoes" for qty, res in p.inp)
+
+def test_selective_module_exports(tmp_path):
+    recipe_content = """
+    mod supplier {
+        def 1 kg potatoes *;
+        let veggies = 1 kg potatoes;
+        let meat = 1 kg beef;
+    }
+    use supplier::{veggies};
+    prep: veggies -> 1 kg chopped_veggies;
+    """
+    recipe_file = tmp_path / "test_selective_exports.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(recipe_file))
+    
+    # We selectively imported `veggies`, so `veggies` should evaluate properly
+    p = next(p for p in ctx.processes if p.name == "prep")
+    assert any(res.name == "potatoes" for qty, res in p.inp)
+    
+    # We did not import `meat`, so using it should fail
+    bad_content = recipe_content + "\nbad: meat -> 1 kg cooked_meat;"
+    bad_file = tmp_path / "test_bad.rf"
+    bad_file.write_text(bad_content, encoding="utf-8")
+    
+    with pytest.raises(ValueError, match="Macro 'meat' is used before declaration or not defined."):
+        parser.parse_file(str(bad_file))
+
