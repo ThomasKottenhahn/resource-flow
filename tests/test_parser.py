@@ -319,7 +319,7 @@ def test_let_macro_reassignment(tmp_path):
         parser.parse_file(str(recipe_file))
 
 
-def test_let_macro_use_before_decl(tmp_path):
+def test_let_macro_use_before_decl_succeeds(tmp_path):
     recipe_content = """
     prep: veggies -> 450 g chopped_veggies;
     let veggies = 300 g carrots, 200 g potatoes;
@@ -328,5 +328,45 @@ def test_let_macro_use_before_decl(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     parser = RecipeParser()
-    with pytest.raises((ValueError, VisitError), match="Macro 'veggies' is used before declaration or not defined."):
+    ctx = parser.parse_file(str(recipe_file))
+    p = next(p for p in ctx.processes if p.name == "prep")
+    assert len(p.inp) == 2
+    res_names = {res.name for qty, res in p.inp}
+    assert "carrots" in res_names
+    assert "potatoes" in res_names
+
+def test_let_macro_undefined(tmp_path):
+    recipe_content = """
+    prep: veggies -> 450 g chopped_veggies;
+    """
+    recipe_file = tmp_path / "test_let_undefined.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    with pytest.raises(ValueError, match="Macro 'veggies' is used before declaration or not defined."):
         parser.parse_file(str(recipe_file))
+
+def test_module_exports(tmp_path):
+    mod_content = """
+    def 1 kg potatoes *;
+    let veggies = 1 kg potatoes;
+    """
+    mod_file = tmp_path / "supplier.rf"
+    mod_file.write_text(mod_content, encoding="utf-8")
+
+    main_content = """
+    use "supplier.rf";
+    prep: veggies -> 1 kg chopped_veggies;
+    """
+    main_file = tmp_path / "main.rf"
+    main_file.write_text(main_content, encoding="utf-8")
+
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(main_file))
+    
+    # Verify the def was exported and made available as a basic resource
+    assert any(d.name == "potatoes" and d.basic for d in ctx.defs)
+    
+    # Verify the macro was exported and evaluated
+    p = next(p for p in ctx.processes if p.name == "prep")
+    assert any(res.name == "potatoes" for qty, res in p.inp)
