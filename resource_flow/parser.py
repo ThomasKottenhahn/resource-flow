@@ -1,13 +1,13 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef
 from dataclasses import dataclass, field
 
 @dataclass
 class ModuleScope:
     processes: list[Process] = field(default_factory=list)
     imports: list[Import] = field(default_factory=list)
-    defs: list[Resource] = field(default_factory=list)
+    defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
 
 @dataclass
@@ -17,8 +17,8 @@ class ParseResult:
     query: Query = field(default_factory=lambda: Query(set()))
     owned_processes: list[Process] = field(default_factory=list)
     reexported_processes: list[Process] = field(default_factory=list)
-    defs: list[Resource] = field(default_factory=list)
-    reexported_defs: list[Resource] = field(default_factory=list)
+    defs: list[BasicResourceDef] = field(default_factory=list)
+    reexported_defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
     reexported_macros: dict[str, set] = field(default_factory=dict)
 
@@ -29,7 +29,7 @@ class MacroRef:
 @dataclass
 class ModuleExports:
     processes: set[Process] = field(default_factory=set)
-    defs: list[Resource] = field(default_factory=list)
+    defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
 
 
@@ -46,7 +46,7 @@ class RecipeTransformer(Transformer):
             from lark.exceptions import VisitError
             raise ValueError(f"Macro '{ident}' is already defined.")
         self.macros[ident] = items[1]
-        return ("let", ident, items[1])
+        return MacroDef(ident, items[1])
 
     def macro_ref(self, items):
         """Resolve a macro reference."""
@@ -205,6 +205,10 @@ class RecipeTransformer(Transformer):
         """Parse a 'using tools' clause for queries."""
         return set(items)
 
+    def supplier_clause(self, items):
+        """Parse a 'at supplier' clause."""
+        return ("supplier", str(items[0]))
+
     def transition(self, items):
         """Parse a process transition (inputs -> outputs)."""
         name = ""
@@ -333,11 +337,15 @@ class RecipeTransformer(Transformer):
     def def_stmt(self, items):
         """Parse a standalone basic resource definition."""
         qty, resource = items[0]
-        # def enforces basic implicitly even without a * 
+        supplier = None
+        for item in items[1:]:
+            if isinstance(item, tuple) and item[0] == "supplier":
+                supplier = item[1]
+        
         tags = set(resource.tags)
         tags.add("basic")
         resource.tags = frozenset(tags)
-        return resource
+        return BasicResourceDef(resource, qty, supplier)
 
     def program_item(self, items):
         return items[0]
@@ -347,7 +355,34 @@ class RecipeTransformer(Transformer):
 
     def module(self, items):
         name = str(items[0])
-        return Module(name, list(items[1:]))
+        parsed_tags = []
+        supplier = None
+        module_items = []
+        for item in items[1:]:
+            if item is None:
+                continue
+            if isinstance(item, list):
+                parsed_tags = item
+            elif isinstance(item, tuple) and item[0] == "supplier":
+                supplier = item[1]
+            else:
+                module_items.append(item)
+                
+        tags = []
+        for t in parsed_tags:
+            tag_type = t[0]
+            if tag_type == "flag":
+                tags.append(t[1])
+            elif tag_type == "kv":
+                key, val_num, unit_str = t[1], t[2], t[3]
+                if unit_str:
+                    tags.append(f"{key}:{Quantity(val_num, unit_str).to_base_unit().val}")
+                else:
+                    tags.append(f"{key}:{val_num}")
+            elif tag_type == "negated":
+                tags.append(f"!{t[1]}")
+                
+        return Module(name, module_items, tags=tags, supplier=supplier)
 
     def import_stmt(self, items):
         module_name_raw = str(items[0])
@@ -442,7 +477,8 @@ class RecipeParser:
         # Map module paths to their direct contents
         modules_map: dict[str, ModuleScope] = {}
         
-        def walk(item_list, current_path: list[str]):
+        def walk(item_list, current_path: list[str], inherited_tags: set = None, inherited_supplier: str = None):
+            if inherited_tags is None: inherited_tags = set()
             mod_key = "::".join(current_path)
             if mod_key not in modules_map:
                 modules_map[mod_key] = ModuleScope()
@@ -457,6 +493,9 @@ class RecipeParser:
                         item.fully_qualified_label = item.original_label
                         item.name = item.fully_qualified_label
                     
+                    if inherited_tags:
+                        item.tags = frozenset(set(item.tags) | inherited_tags)
+                    
                     modules_map[mod_key].processes.append(item)
                     all_owned_processes.append(item)
                 elif isinstance(item, Query):
@@ -464,12 +503,18 @@ class RecipeParser:
                 elif isinstance(item, Import):
                     modules_map[mod_key].imports.append(item)
                 elif isinstance(item, Module):
-                    walk(item.items, current_path + [item.name])
-                elif isinstance(item, Resource):
+                    new_tags = inherited_tags | set(item.tags)
+                    new_supplier = item.supplier if item.supplier is not None else inherited_supplier
+                    walk(item.items, current_path + [item.name], new_tags, new_supplier)
+                elif isinstance(item, BasicResourceDef):
+                    if inherited_tags:
+                        item.resource.tags = frozenset(set(item.resource.tags) | inherited_tags)
+                    if item.supplier is None:
+                        item.supplier = inherited_supplier
                     defs.append(item)
                     modules_map[mod_key].defs.append(item)
-                elif isinstance(item, tuple) and item[0] == "let":
-                    modules_map[mod_key].macros[item[1]] = item[2]
+                elif isinstance(item, MacroDef):
+                    modules_map[mod_key].macros[item.name] = item.multiset
         walk(items, [])
         
         exported_by_module: dict[str, ModuleExports] = {}
@@ -557,9 +602,9 @@ class RecipeParser:
 
         global_exports = get_exports("", set())
         
-        def expand_multiset(mset: set, available_macros: dict, visited_macros: set = None) -> set:
+        def expand_multiset(mset: set, available_macros: dict, visited_macros: list = None) -> set:
             if visited_macros is None:
-                visited_macros = set()
+                visited_macros = []
             expanded = set()
             for item in mset:
                 if isinstance(item, MacroRef):
@@ -567,8 +612,8 @@ class RecipeParser:
                     if ident not in available_macros:
                         raise ValueError(f"Macro '{ident}' is used before declaration or not defined.")
                     if ident in visited_macros:
-                        raise ValueError(f"Cyclic macro definition detected: {' -> '.join(list(visited_macros) + [ident])}")
-                    expanded.update(expand_multiset(available_macros[ident], available_macros, visited_macros | {ident}))
+                        raise ValueError(f"Cyclic macro definition detected: {' -> '.join(visited_macros + [ident])}")
+                    expanded.update(expand_multiset(available_macros[ident], available_macros, visited_macros + [ident]))
                 else:
                     expanded.add(item)
             return expanded
@@ -592,7 +637,7 @@ class RecipeParser:
             resources.update(r for _, r in p.inp)
             resources.update(r for _, r in p.out)
         for d in global_exports.defs:
-            resources.add(d)
+            resources.add(d.resource)
         resources.update(r for _, r in combined_query.query)
             
         reexported_defs = list(set(global_exports.defs) - set(defs))

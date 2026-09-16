@@ -431,3 +431,36 @@ def test_cyclic_macro_definition(tmp_path):
     with pytest.raises(ValueError, match="Cyclic macro definition detected: (a -> b -> a|b -> a -> b)"):
         parser.parse_file(str(recipe_file))
 
+def test_parse_supplier(tmp_path):
+    recipe_content = "def 300g carrots at Lidl;"
+    recipe_file = tmp_path / "test.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(recipe_file))
+    
+    assert len(ctx.defs) == 1
+    d = ctx.defs[0]
+    assert d.supplier == "Lidl"
+    assert d.name == "carrots"
+    assert d.quantity == Quantity(300.0, "g")
+
+def test_parse_module_headers(tmp_path):
+    recipe_content = "mod Lidl_Store [organic] at Lidl { def 300g carrots; }"
+    recipe_file = tmp_path / "test.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(recipe_file))
+    
+    assert len(ctx.defs) == 1
+    d = ctx.defs[0]
+    assert d.supplier == "Lidl"
+    assert "organic" in d.resource.tags
+
+def test_parse_macro_def(tmp_path):
+    recipe_content = "let x = 5 kg apples;"
+    recipe_file = tmp_path / "test.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+    parser = RecipeParser()
+    ctx = parser._parse_file_internal(str(recipe_file), {})
+    
+    assert "x" in ctx.macros

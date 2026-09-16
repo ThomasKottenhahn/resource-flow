@@ -5,10 +5,10 @@ program: program_item*
                  | let_stmt ";"
                  | module
 
-    def_stmt: "def" resource
+    def_stmt: "def" resource supplier_clause?
     let_stmt: "let" IDENTIFIER "=" multiset_expr
 
-    module: "mod" IDENTIFIER "{" module_item* "}"
+    module: "mod" IDENTIFIER tags? supplier_clause? "{" module_item* "}"
 
     ?module_item: statement ";"
                 | let_stmt ";"
@@ -38,6 +38,7 @@ program: program_item*
 
     tool_clause: "with" tool ("," tool)*
     using_clause: "using" tool ("," tool)*
+    supplier_clause: "at" IDENTIFIER
     tool: NUMBER? UNIT? name
 
     name: IDENTIFIER (" " IDENTIFIER)*
