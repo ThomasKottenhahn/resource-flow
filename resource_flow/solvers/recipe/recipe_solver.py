@@ -346,22 +346,13 @@ class RecipeSolver(Solver):
     def _scale_topology(self, processes: list[Process], basic_reqs: dict[str, Resource]) -> tuple[DAG, dict[str, float], dict[str, Quantity], dict[str, Quantity]]:
         """Calculate scale factors for all processes in the topology and construct its fully scaled DAG."""
         demands: dict[str, Quantity] = {}
-        surplus: dict[str, Quantity] = {}
         for qty, res in self.query.query:
-            if "discrete" in res.tags:
-                rounded_val = math.ceil(qty.val)
-                if rounded_val > qty.val:
-                    excess = Quantity(rounded_val - qty.val, qty.unit)
-                    if res.name in surplus:
-                        surplus[res.name] += excess
-                    else:
-                        surplus[res.name] = excess
-                    qty = Quantity(rounded_val, qty.unit)
             if res.name in demands:
                 demands[res.name] += qty
             else:
                 demands[res.name] = qty
 
+        surplus: dict[str, Quantity] = {}
         process_scales: dict[str, float] = {}
 
         for proc in reversed(processes):
@@ -410,20 +401,33 @@ class RecipeSolver(Solver):
                         )
 
                 if needed.val > 0:
-                    if "discrete" in res_in.tags:
-                        rounded_val = math.ceil(needed.val)
-                        if rounded_val > needed.val:
-                            excess = Quantity(rounded_val - needed.val, needed.unit)
-                            if res_in.name in surplus:
-                                surplus[res_in.name] += excess
-                            else:
-                                surplus[res_in.name] = excess
-                            needed = Quantity(rounded_val, needed.unit)
-
                     if res_in.name in demands:
                         demands[res_in.name] += needed
                     else:
                         demands[res_in.name] = needed
+
+        for name, qty in demands.items():
+            basic_res = basic_reqs.get(name)
+            # Need to get the actual basic resource if possible
+            if not basic_res:
+                global_res_list = self.basic_resources.get(name, [])
+                basic_res = next((r for r in global_res_list if r.cost > 0), global_res_list[0] if global_res_list else None)
+
+            if basic_res and "discrete" in basic_res.tags:
+                batch_qty = Quantity(1.0, qty.unit)
+                if basic_res in self.resource_defs:
+                    batch_qty = self.resource_defs[basic_res].quantity.convert_to(qty.unit)
+                
+                scale = qty.val / batch_qty.val
+                rounded_scale = math.ceil(scale)
+                if rounded_scale > scale:
+                    actual_qty = Quantity(rounded_scale * batch_qty.val, qty.unit)
+                    excess = Quantity(actual_qty.val - qty.val, qty.unit)
+                    if name in surplus:
+                        surplus[name] += excess
+                    else:
+                        surplus[name] = excess
+                    demands[name] = actual_qty
 
         dag = self._build_dag_from_solution(processes, process_scales, demands, basic_reqs)
         return dag, process_scales, demands, surplus

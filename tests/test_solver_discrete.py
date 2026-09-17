@@ -51,3 +51,27 @@ def test_solver_discrete_batch_scaling_with_producer():
     # Surplus is 0.5 eggs.
     assert dag["chicken"] == 2.0
     assert solver.final_surplus["egg"] == Quantity(0.5, "piece")
+
+def test_solver_discrete_batch_scaling_with_custom_batch_size():
+    from resource_flow.models import BasicResourceDef
+    flour = Resource("Flour", basic=True, tags={"discrete"})
+    # Supplier sells flour in batches of 200g
+    flour_def = BasicResourceDef(flour, Quantity(200, "g"), supplier="Farm")
+    
+    final = Resource("final", basic=False)
+    # Process needs 300g of flour
+    cook = Process(
+        "cook",
+        {(Quantity(300, "g"), flour)},
+        {(Quantity(1, "piece"), final)}
+    )
+
+    query = Query({(Quantity(1, "piece"), final)})
+    
+    solver = RecipeSolver({cook}, query, defs=[flour_def])
+    dag = solver.solve()
+    
+    # Total demand should be 400g because 300g requires 2 batches of 200g
+    assert solver.final_demands["Flour"] == Quantity(400.0, "g")
+    assert solver.final_surplus["Flour"].val == pytest.approx(100.0)
+    assert solver.final_surplus["Flour"].unit == "g"
