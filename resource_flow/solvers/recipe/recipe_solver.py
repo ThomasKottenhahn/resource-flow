@@ -2,6 +2,7 @@ from __future__ import annotations
 from ...dag import DAG, DAGEdge, DAGNode
 from ...models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, ProgramContext, BasicResourceDef
 from typing import Any
+import math
 from ..base import Solver
 
 class RecipeSolver(Solver):
@@ -345,13 +346,22 @@ class RecipeSolver(Solver):
     def _scale_topology(self, processes: list[Process], basic_reqs: dict[str, Resource]) -> tuple[DAG, dict[str, float], dict[str, Quantity], dict[str, Quantity]]:
         """Calculate scale factors for all processes in the topology and construct its fully scaled DAG."""
         demands: dict[str, Quantity] = {}
+        surplus: dict[str, Quantity] = {}
         for qty, res in self.query.query:
+            if "discrete" in res.tags:
+                rounded_val = math.ceil(qty.val)
+                if rounded_val > qty.val:
+                    excess = Quantity(rounded_val - qty.val, qty.unit)
+                    if res.name in surplus:
+                        surplus[res.name] += excess
+                    else:
+                        surplus[res.name] = excess
+                    qty = Quantity(rounded_val, qty.unit)
             if res.name in demands:
                 demands[res.name] += qty
             else:
                 demands[res.name] = qty
 
-        surplus: dict[str, Quantity] = {}
         process_scales: dict[str, float] = {}
 
         for proc in reversed(processes):
@@ -363,6 +373,9 @@ class RecipeSolver(Solver):
                     scale = converted_demand.val / qty_out.val
                     if scale > scale_factor:
                         scale_factor = scale
+
+            if any("discrete" in res_out.tags for _, res_out in proc.out):
+                scale_factor = float(math.ceil(scale_factor))
 
             process_scales[proc.name] = scale_factor
 
@@ -397,6 +410,16 @@ class RecipeSolver(Solver):
                         )
 
                 if needed.val > 0:
+                    if "discrete" in res_in.tags:
+                        rounded_val = math.ceil(needed.val)
+                        if rounded_val > needed.val:
+                            excess = Quantity(rounded_val - needed.val, needed.unit)
+                            if res_in.name in surplus:
+                                surplus[res_in.name] += excess
+                            else:
+                                surplus[res_in.name] = excess
+                            needed = Quantity(rounded_val, needed.unit)
+
                     if res_in.name in demands:
                         demands[res_in.name] += needed
                     else:
