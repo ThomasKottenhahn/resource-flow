@@ -1,10 +1,10 @@
 import abc
 from ..dag import DAG
-from ..models import Process, Query, Quantity, Resource
+from ..models import Process, Query, Quantity, Resource, BasicResourceDef
 
 class Solver(abc.ABC):
     """Abstract base class for all solvers in Resource Flow."""
-    def __init__(self, processes: set[Process], query: Query, defs: list[Resource] | None = None) -> None:
+    def __init__(self, processes: set[Process], query: Query, defs: list[Resource | BasicResourceDef] | None = None) -> None:
         self.processes = processes
         self.query = query
         self.defs = defs or []

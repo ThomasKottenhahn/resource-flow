@@ -42,7 +42,7 @@ def test_solver_basic_detection_and_dag():
     # Topological order: make_dough must be before bake_bread since bake_bread depends on dough
     assert processes_in_dag[0] == make_dough
     assert processes_in_dag[1] == bake_bread
-    assert basic_reqs == {"flour", "water"}
+    assert set(basic_reqs.keys()) == {"flour", "water"}
 
 
 def test_solver_globally_valid_basic_resource():
@@ -166,7 +166,7 @@ def test_solver_tag_matching_producer_selection():
 
     assert proc_org in dag
     assert proc_conv not in dag
-    assert basic_reqs == {"carrots"}
+    assert set(basic_reqs.keys()) == {"carrots"}
 
 
 def test_solver_negated_tag_rejection():
