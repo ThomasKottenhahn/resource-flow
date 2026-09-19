@@ -17,7 +17,7 @@ def test_external_import_basic(tmp_path):
     resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     assert len(processes) == 1
-    assert list(processes)[0].name == "sub.rf::peel"
+    assert list(processes)[0].name == "sub::peel"
     assert list(query.query)[0][1].name == "B"
 
 def test_external_import_specific(tmp_path):
@@ -38,7 +38,7 @@ def test_external_import_specific(tmp_path):
     resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
     assert len(processes) == 1
-    assert list(processes)[0].name == "sub.rf::p2"
+    assert list(processes)[0].name == "sub::p2"
 
 def test_external_import_nested(tmp_path):
     sub_sub_file = tmp_path / "subsub.rf"
@@ -62,8 +62,8 @@ def test_external_import_nested(tmp_path):
 
     assert len(processes) == 2
     names = {p.name for p in processes}
-    assert "subsub.rf::p1" in names
-    assert "sub.rf::p2" in names
+    assert "subsub::p1" in names
+    assert "sub::p2" in names
 
 def test_implicit_external_import_string(tmp_path):
     sub_file = tmp_path / "sub.rf"

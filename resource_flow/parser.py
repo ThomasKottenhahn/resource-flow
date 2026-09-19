@@ -1,6 +1,6 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef, ConvertStatement
 from dataclasses import dataclass, field
 
 @dataclass
@@ -9,6 +9,7 @@ class ModuleScope:
     imports: list[Import] = field(default_factory=list)
     defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
+    converts: list[ConvertStatement] = field(default_factory=list)
 
 @dataclass
 class ParseResult:
@@ -21,6 +22,8 @@ class ParseResult:
     reexported_defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
     reexported_macros: dict[str, set] = field(default_factory=dict)
+    converts: list[ConvertStatement] = field(default_factory=list)
+    reexported_converts: list[ConvertStatement] = field(default_factory=list)
 
 @dataclass(frozen=True)
 class MacroRef:
@@ -31,6 +34,7 @@ class ModuleExports:
     processes: set[Process] = field(default_factory=set)
     defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
+    converts: list[ConvertStatement] = field(default_factory=list)
 
 
 class RecipeTransformer(Transformer):
@@ -47,6 +51,14 @@ class RecipeTransformer(Transformer):
             raise ValueError(f"Macro '{ident}' is already defined.")
         self.macros[ident] = items[1]
         return MacroDef(ident, items[1])
+
+    def convert_stmt(self, items):
+        """Parse a convert statement."""
+        val1 = float(items[0])
+        unit1 = str(items[1])
+        val2 = float(items[2])
+        unit2 = str(items[3])
+        return ConvertStatement(Quantity(val1, unit1), Quantity(val2, unit2))
 
     def macro_ref(self, items):
         """Resolve a macro reference."""
@@ -91,22 +103,27 @@ class RecipeTransformer(Transformer):
     def resource(self, items):
         """Parse a resource and its quantity."""
         val = float(items[0])
-        unit = str(items[1])
-        name = str(items[2])
+        unit = "piece"
+        name = ""
         is_basic = False
         parsed_tags = []
 
-        for item in items[3:]:
+        for item in items[1:]:
             if item is None:
                 continue
-            if isinstance(item, list):
+            if getattr(item, "type", "") == "UNIT":
+                unit = str(item)
+            elif isinstance(item, list):
                 parsed_tags = item
             elif str(item) == "*":
                 is_basic = True
+            elif isinstance(item, str):
+                name = item
 
         tags = set()
         negated_tags = set()
         cost = 0.0
+        cost_currency = None
 
         qty = Quantity(val, unit)
         base_resource_qty = qty.to_base_unit()
@@ -121,6 +138,7 @@ class RecipeTransformer(Transformer):
                 key, val_num, unit_str = t[1], t[2], t[3]
                 if key == "cost":
                     cost = val_num
+                    cost_currency = unit_str
                 elif key == "time":
                     raise ValueError("Resources cannot have a time tag")
                 else:
@@ -148,6 +166,7 @@ class RecipeTransformer(Transformer):
             negated_tags=negated_tags,
             cost=unit_cost,
             cost_unit=cost_unit,
+            cost_currency=cost_currency,
         )
 
     def multiset(self, items):
@@ -237,6 +256,7 @@ class RecipeTransformer(Transformer):
 
         proc_tags = set()
         cost = 0.0
+        cost_currency = None
         proc_time = 0.0
         time_unit = "min"
 
@@ -245,10 +265,13 @@ class RecipeTransformer(Transformer):
                 tag_type = t[0]
                 if tag_type == "flag":
                     proc_tags.add(t[1])
+                elif tag_type == "negated":
+                    proc_tags.add(f"!{t[1]}")
                 elif tag_type == "kv":
                     key, val_num, unit_str = t[1], t[2], t[3]
                     if key == "cost":
                         cost = val_num
+                        cost_currency = unit_str
                     elif key == "time":
                         proc_time = val_num
                         if unit_str:
@@ -277,6 +300,7 @@ class RecipeTransformer(Transformer):
             time_unit=time_unit,
             tags=proc_tags,
             tools=tools,
+            cost_currency=cost_currency,
         )
 
     def query(self, items):
@@ -390,6 +414,9 @@ class RecipeTransformer(Transformer):
         if module_name_raw.startswith('"') and module_name_raw.endswith('"'):
             module_name = module_name_raw[1:-1]
             is_file = True
+        elif module_name_raw.startswith('./') or module_name_raw.startswith('../'):
+            module_name = module_name_raw
+            is_file = True
         else:
             module_name = module_name_raw
 
@@ -429,6 +456,53 @@ class RecipeParser:
         first_part = rest.split("::")[0]
         return first_part in imp.items
 
+    @staticmethod
+    def _resolve_tags(inherited: set[str], current: set[str], current_negated: set[str] = frozenset()) -> set[str]:
+        result = set(inherited)
+        for t in current_negated:
+            result.discard(t)
+        for t in current:
+            if t.startswith("!"):
+                result.discard(t[1:])
+            else:
+                result.add(t)
+        return {t for t in result if not t.startswith("!")}
+
+    @staticmethod
+    def _merge_implicit_file_module(items: list, file_path: str) -> tuple[list, set, str | None]:
+        file_stem = Path(file_path).stem
+        explicit_modules = [item for item in items if isinstance(item, Module)]
+        
+        if len(explicit_modules) == 1 and explicit_modules[0].name == file_stem:
+            mod = explicit_modules[0]
+            inherited_tags = RecipeParser._resolve_tags(set(), set(mod.tags))
+            inherited_supplier = mod.supplier
+            new_items = []
+            for item in items:
+                if item is mod:
+                    new_items.extend(mod.items)
+                else:
+                    new_items.append(item)
+            return new_items, inherited_tags, inherited_supplier
+        return items, set(), None
+
+    @staticmethod
+    def _expand_multiset(mset: set, available_macros: dict, visited_macros: list = None) -> set:
+        if visited_macros is None:
+            visited_macros = []
+        expanded = set()
+        for item in mset:
+            if isinstance(item, MacroRef):
+                ident = item.ident
+                if ident not in available_macros:
+                    raise ValueError(f"Macro '{ident}' is used before declaration or not defined.")
+                if ident in visited_macros:
+                    raise ValueError(f"Cyclic macro definition detected: {' -> '.join(visited_macros + [ident])}")
+                expanded.update(RecipeParser._expand_multiset(available_macros[ident], available_macros, visited_macros + [ident]))
+            else:
+                expanded.add(item)
+        return expanded
+
     def parse_file(self, file_path: str) -> ProgramContext:
         """Parse a DSL file and return the parsed program context."""
         res = self._parse_file_internal(file_path, {})
@@ -437,6 +511,7 @@ class RecipeParser:
             processes=res.global_processes,
             query=res.query,
             defs=res.defs + res.reexported_defs,
+            converts=res.converts + res.reexported_converts,
         )
 
     def parse_string(self, content: str, file_path: str) -> ProgramContext:
@@ -447,6 +522,7 @@ class RecipeParser:
             processes=res.global_processes,
             query=res.query,
             defs=res.defs + res.reexported_defs,
+            converts=res.converts + res.reexported_converts,
         )
 
     def _parse_file_internal(self, file_path: str, _cache: dict[str, ParseResult]) -> ParseResult:
@@ -469,10 +545,13 @@ class RecipeParser:
         tree = self.lark.parse(content)
         items = RecipeTransformer().transform(tree)
 
+        items, file_inherited_tags, file_inherited_supplier = self._merge_implicit_file_module(items, file_path)
+
         all_owned_processes: list[Process] = []
         all_reexported_processes: list[Process] = []
         queries: list[Query] = []
         defs: list[Resource] = []
+        converts: list[ConvertStatement] = []
         
         # Map module paths to their direct contents
         modules_map: dict[str, ModuleScope] = {}
@@ -493,8 +572,7 @@ class RecipeParser:
                         item.fully_qualified_label = item.original_label
                         item.name = item.fully_qualified_label
                     
-                    if inherited_tags:
-                        item.tags = frozenset(set(item.tags) | inherited_tags)
+                    item.tags = frozenset(RecipeParser._resolve_tags(inherited_tags, item.tags))
                     
                     modules_map[mod_key].processes.append(item)
                     all_owned_processes.append(item)
@@ -503,19 +581,23 @@ class RecipeParser:
                 elif isinstance(item, Import):
                     modules_map[mod_key].imports.append(item)
                 elif isinstance(item, Module):
-                    new_tags = inherited_tags | set(item.tags)
+                    new_tags = RecipeParser._resolve_tags(inherited_tags, set(item.tags))
                     new_supplier = item.supplier if item.supplier is not None else inherited_supplier
                     walk(item.items, current_path + [item.name], new_tags, new_supplier)
                 elif isinstance(item, BasicResourceDef):
-                    if inherited_tags:
-                        item.resource.tags = frozenset(set(item.resource.tags) | inherited_tags)
+                    item.resource.tags = frozenset(RecipeParser._resolve_tags(
+                        inherited_tags, set(item.resource.tags), item.resource.negated_tags
+                    ))
                     if item.supplier is None:
                         item.supplier = inherited_supplier
                     defs.append(item)
                     modules_map[mod_key].defs.append(item)
                 elif isinstance(item, MacroDef):
                     modules_map[mod_key].macros[item.name] = item.multiset
-        walk(items, [])
+                elif isinstance(item, ConvertStatement):
+                    converts.append(item)
+                    modules_map[mod_key].converts.append(item)
+        walk(items, [], file_inherited_tags, file_inherited_supplier)
         
         exported_by_module: dict[str, ModuleExports] = {}
         
@@ -540,6 +622,7 @@ class RecipeParser:
                 exports.processes.update(modules_map[mod_key].processes)
                 exports.defs.extend(modules_map[mod_key].defs)
                 exports.macros.update(modules_map[mod_key].macros)
+                exports.converts.extend(modules_map[mod_key].converts)
                 
                 for imp in modules_map[mod_key].imports:
                     # 1. Try local module first if it's not explicitly a file (string literal)
@@ -553,6 +636,7 @@ class RecipeParser:
                                 exports.processes.add(p)
                         exports.defs.extend(filter_list(target_exports.defs, imp.items))
                         exports.macros.update(filter_dict(target_exports.macros, imp.items))
+                        exports.converts.extend(target_exports.converts)
                     else:
                         # 2. File import or fallback for bare module that wasn't local
                         target_path = Path(file_path).parent / imp.module_name
@@ -576,7 +660,10 @@ class RecipeParser:
                         target_res = _cache[target_resolved_path]
                         queries.append(target_res.query)
                         
-                        prefix = imp.module_name
+                        if imp.is_file:
+                            prefix = Path(imp.module_name).stem
+                        else:
+                            prefix = imp.module_name
                         import copy
                         for p in target_res.owned_processes:
                             new_p = copy.copy(p)
@@ -595,6 +682,7 @@ class RecipeParser:
                         exports.defs.extend(filter_list(target_res.defs + target_res.reexported_defs, imp.items))
                         exports.macros.update(filter_dict(target_res.macros, imp.items))
                         exports.macros.update(filter_dict(target_res.reexported_macros, imp.items))
+                        exports.converts.extend(target_res.converts + target_res.reexported_converts)
                                     
             exported_by_module[mod_key] = exports
             visited.remove(mod_key)
@@ -602,34 +690,18 @@ class RecipeParser:
 
         global_exports = get_exports("", set())
         
-        def expand_multiset(mset: set, available_macros: dict, visited_macros: list = None) -> set:
-            if visited_macros is None:
-                visited_macros = []
-            expanded = set()
-            for item in mset:
-                if isinstance(item, MacroRef):
-                    ident = item.ident
-                    if ident not in available_macros:
-                        raise ValueError(f"Macro '{ident}' is used before declaration or not defined.")
-                    if ident in visited_macros:
-                        raise ValueError(f"Cyclic macro definition detected: {' -> '.join(visited_macros + [ident])}")
-                    expanded.update(expand_multiset(available_macros[ident], available_macros, visited_macros + [ident]))
-                else:
-                    expanded.add(item)
-            return expanded
-
         all_macros = {}
         if "" in modules_map:
             all_macros.update(modules_map[""].macros)
         all_macros.update(global_exports.macros)
 
         for p in all_owned_processes + all_reexported_processes:
-            p.inp = expand_multiset(p.inp, all_macros)
-            p.out = expand_multiset(p.out, all_macros)
+            p.inp = self._expand_multiset(p.inp, all_macros)
+            p.out = self._expand_multiset(p.out, all_macros)
 
         combined_query = Query(set())
         for q in queries:
-            q.query = expand_multiset(q.query, all_macros)
+            q.query = self._expand_multiset(q.query, all_macros)
             combined_query.add(q)
             
         resources: set[Resource] = set()
@@ -643,6 +715,9 @@ class RecipeParser:
         reexported_defs = list(set(global_exports.defs) - set(defs))
         local_macros = modules_map[""].macros if "" in modules_map else {}
         reexported_macros = {k: v for k, v in global_exports.macros.items() if k not in local_macros}
+        
+        local_converts = modules_map[""].converts if "" in modules_map else []
+        reexported_converts = [c for c in global_exports.converts if c not in local_converts]
             
         res = ParseResult(
             resources=resources,
@@ -654,6 +729,8 @@ class RecipeParser:
             reexported_defs=reexported_defs,
             macros=local_macros,
             reexported_macros=reexported_macros,
+            converts=local_converts,
+            reexported_converts=reexported_converts,
         )
         _cache[target_resolved] = res
         return res

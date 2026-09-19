@@ -1,6 +1,6 @@
 import pytest
 from resource_flow.parser import RecipeParser
-from resource_flow.models import Process, Query, Quantity, Resource
+from resource_flow.models import Process, Query, Quantity, Resource, ConvertStatement
 
 
 def test_parser_with_simple_recipe(tmp_path):
@@ -464,3 +464,120 @@ def test_parse_macro_def(tmp_path):
     ctx = parser._parse_file_internal(str(recipe_file), {})
     
     assert "x" in ctx.macros
+
+def test_relative_import_parsing(tmp_path):
+    # Create a local file to import in a subdirectory
+    subdir = tmp_path / "subdir"
+    subdir.mkdir()
+    local_mod = subdir / "local.rf"
+    local_mod.write_text("def 1 piece imported_resource;")
+
+    main_mod = tmp_path / "main.rf"
+    main_mod.write_text('use ./subdir/local;')
+
+    parser = RecipeParser()
+    prog = parser.parse_file(str(main_mod))
+    
+    assert any(r.name == "imported_resource" for r in prog.resources)
+
+def test_negated_tags():
+    parser = RecipeParser()
+    prog = parser.parse_string('def 1 piece apple [!discrete];', "virtual.rf")
+    res = list(prog.resources)[0]
+    assert "discrete" in res.negated_tags
+
+def test_unit_less_quantities():
+    parser = RecipeParser()
+    prog = parser.parse_string('def 10 apple *;', "virtual.rf")
+    assert len(prog.defs) == 1
+    d = prog.defs[0]
+    assert d.quantity.val == 10
+    assert d.quantity.unit == "piece"
+
+def test_currency_in_costs():
+    parser = RecipeParser()
+    prog = parser.parse_string('def 1 piece apple * [cost: 10 USD];', "virtual.rf")
+    res = list(prog.resources)[0]
+    assert res.cost == 10.0
+    assert res.cost_currency == "USD"
+    
+    prog2 = parser.parse_string('def 1 piece banana * [cost: 5 €];', "virtual.rf")
+    res2 = list(prog2.resources)[0]
+    assert res2.cost == 5.0
+    assert res2.cost_currency == "€"
+
+def test_convert_stmt():
+    parser = RecipeParser()
+    prog = parser.parse_string('convert 1 € = 7.48 DKK;', "virtual.rf")
+    assert len(prog.converts) == 1
+    c = prog.converts[0]
+    assert c.from_qty == Quantity(1.0, "€")
+    assert c.to_qty == Quantity(7.48, "DKK")
+
+def test_implicit_file_module_merging(tmp_path):
+    lidl_rf = tmp_path / "lidl.rf"
+    lidl_rf.write_text("mod lidl [discrete] at Lidl {\n  def 1 piece item;\n}")
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(lidl_rf))
+    assert len(ctx.defs) == 1
+    assert "discrete" in ctx.defs[0].resource.tags
+    assert ctx.defs[0].supplier == "Lidl"
+
+def test_no_merge_for_multiple_modules(tmp_path):
+    multi_rf = tmp_path / "multi.rf"
+    multi_rf.write_text("mod multi [discrete] {\n  def 1 piece item;\n}\nmod other [fast] {\n  def 1 piece item2;\n}")
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(multi_rf))
+    item1 = next(d for d in ctx.defs if d.resource.name == "item")
+    item2 = next(d for d in ctx.defs if d.resource.name == "item2")
+    assert "discrete" in item1.resource.tags
+    assert "fast" in item2.resource.tags
+    assert "discrete" not in item2.resource.tags
+
+def test_relative_import_resolution(tmp_path):
+    subdir = tmp_path / "shops"
+    subdir.mkdir()
+    lidl_rf = subdir / "lidl.rf"
+    lidl_rf.write_text("def 1 piece imported_item;\nproc: 1 piece input -> 1 piece output;")
+    
+    main_rf = tmp_path / "main.rf"
+    main_rf.write_text("use ./shops/lidl;")
+    
+    parser = RecipeParser()
+    prog = parser.parse_file(str(main_rf))
+    
+    assert any(p.name == "lidl::proc" for p in prog.processes)
+
+def test_overriding_inherited_tag(tmp_path):
+    recipe_content = """
+    mod items [discrete] {
+        def 1 piece item1;
+        def 1 piece item2 [!discrete];
+    }
+    """
+    parser = RecipeParser()
+    prog = parser.parse_string(recipe_content, "virtual.rf")
+    
+    item1 = next(d for d in prog.defs if d.resource.name == "item1")
+    item2 = next(d for d in prog.defs if d.resource.name == "item2")
+    
+    assert "discrete" in item1.resource.tags
+    assert "discrete" not in item2.resource.tags
+    assert "!discrete" not in item2.resource.tags
+
+def test_negating_non_inherited_tag(tmp_path):
+    recipe_content = "def 1 piece item [!organic];"
+    parser = RecipeParser()
+    prog = parser.parse_string(recipe_content, "virtual.rf")
+    
+    item = prog.defs[0]
+    assert "organic" not in item.resource.tags
+    assert "!organic" not in item.resource.tags
+
+def test_defaulting_to_piece_for_unitless():
+    parser = RecipeParser()
+    prog = parser.parse_string('def 1 carrots;', "virtual.rf")
+    assert len(prog.defs) == 1
+    d = prog.defs[0]
+    assert d.quantity.val == 1.0
+    assert d.quantity.unit == "piece"
