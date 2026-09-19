@@ -454,6 +454,41 @@ class RecipeParser:
         first_part = rest.split("::")[0]
         return first_part in imp.items
 
+    @staticmethod
+    def _merge_implicit_file_module(items: list, file_path: str) -> tuple[list, set, str | None]:
+        file_stem = Path(file_path).stem
+        explicit_modules = [item for item in items if isinstance(item, Module)]
+        
+        if len(explicit_modules) == 1 and explicit_modules[0].name == file_stem:
+            mod = explicit_modules[0]
+            inherited_tags = set(mod.tags)
+            inherited_supplier = mod.supplier
+            new_items = []
+            for item in items:
+                if item is mod:
+                    new_items.extend(mod.items)
+                else:
+                    new_items.append(item)
+            return new_items, inherited_tags, inherited_supplier
+        return items, set(), None
+
+    @staticmethod
+    def _expand_multiset(mset: set, available_macros: dict, visited_macros: list = None) -> set:
+        if visited_macros is None:
+            visited_macros = []
+        expanded = set()
+        for item in mset:
+            if isinstance(item, MacroRef):
+                ident = item.ident
+                if ident not in available_macros:
+                    raise ValueError(f"Macro '{ident}' is used before declaration or not defined.")
+                if ident in visited_macros:
+                    raise ValueError(f"Cyclic macro definition detected: {' -> '.join(visited_macros + [ident])}")
+                expanded.update(RecipeParser._expand_multiset(available_macros[ident], available_macros, visited_macros + [ident]))
+            else:
+                expanded.add(item)
+        return expanded
+
     def parse_file(self, file_path: str) -> ProgramContext:
         """Parse a DSL file and return the parsed program context."""
         res = self._parse_file_internal(file_path, {})
@@ -496,24 +531,7 @@ class RecipeParser:
         tree = self.lark.parse(content)
         items = RecipeTransformer().transform(tree)
 
-        # Check for implicit file module merging
-        file_stem = Path(file_path).stem
-        explicit_modules = [item for item in items if isinstance(item, Module)]
-        
-        file_inherited_tags = set()
-        file_inherited_supplier = None
-        
-        if len(explicit_modules) == 1 and explicit_modules[0].name == file_stem:
-            mod = explicit_modules[0]
-            file_inherited_tags = set(mod.tags)
-            file_inherited_supplier = mod.supplier
-            new_items = []
-            for item in items:
-                if item is mod:
-                    new_items.extend(mod.items)
-                else:
-                    new_items.append(item)
-            items = new_items
+        items, file_inherited_tags, file_inherited_supplier = self._merge_implicit_file_module(items, file_path)
 
         all_owned_processes: list[Process] = []
         all_reexported_processes: list[Process] = []
@@ -658,34 +676,18 @@ class RecipeParser:
 
         global_exports = get_exports("", set())
         
-        def expand_multiset(mset: set, available_macros: dict, visited_macros: list = None) -> set:
-            if visited_macros is None:
-                visited_macros = []
-            expanded = set()
-            for item in mset:
-                if isinstance(item, MacroRef):
-                    ident = item.ident
-                    if ident not in available_macros:
-                        raise ValueError(f"Macro '{ident}' is used before declaration or not defined.")
-                    if ident in visited_macros:
-                        raise ValueError(f"Cyclic macro definition detected: {' -> '.join(visited_macros + [ident])}")
-                    expanded.update(expand_multiset(available_macros[ident], available_macros, visited_macros + [ident]))
-                else:
-                    expanded.add(item)
-            return expanded
-
         all_macros = {}
         if "" in modules_map:
             all_macros.update(modules_map[""].macros)
         all_macros.update(global_exports.macros)
 
         for p in all_owned_processes + all_reexported_processes:
-            p.inp = expand_multiset(p.inp, all_macros)
-            p.out = expand_multiset(p.out, all_macros)
+            p.inp = self._expand_multiset(p.inp, all_macros)
+            p.out = self._expand_multiset(p.out, all_macros)
 
         combined_query = Query(set())
         for q in queries:
-            q.query = expand_multiset(q.query, all_macros)
+            q.query = self._expand_multiset(q.query, all_macros)
             combined_query.add(q)
             
         resources: set[Resource] = set()
