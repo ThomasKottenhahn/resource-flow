@@ -127,11 +127,11 @@ def test_visualizer_with_tools():
         sys.stdout = sys.__stdout__
 
     output = captured.getvalue()
-    assert "Tools: 1.0 piece furnace" in output
+    assert "Tools: 1 furnace" in output
 
     # Test generate_mermaid
     mermaid = viz.generate_mermaid(time_unit="min")
-    assert "using 1.0 piece furnace" in mermaid
+    assert "using 1 furnace" in mermaid
 
 def _make_dag_with_supplier():
     carrots = Resource("carrots", basic=True, cost=1.0)

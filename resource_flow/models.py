@@ -81,7 +81,10 @@ class Quantity:
         self.unit = unit if unit else "piece"
 
     def __repr__(self) -> str:
-        return f"{self.val} {self.unit}"
+        val_str = f"{int(self.val)}" if self.val.is_integer() else f"{self.val}"
+        if self.unit == "piece":
+            return val_str
+        return f"{val_str} {self.unit}"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Quantity):

@@ -132,3 +132,19 @@ def test_query_basics():
     query2 = Query({(q2, r2)})
     query.add(query2)
     assert query.query == {(q, r), (q2, r2)}
+
+def test_quantity_prose_formatting():
+    from resource_flow.models import Quantity, Tool
+    # If the unit is "piece", we want "1" instead of "1.0 piece"
+    q = Quantity(1.0, "piece")
+    assert repr(q) == "1"
+    
+    q2 = Quantity(2.5, "piece")
+    assert repr(q2) == "2.5"
+    
+    q3 = Quantity(10.0, "g")
+    assert repr(q3) == "10 g"
+    
+    # Test that a Tool represents correctly
+    t = Tool("egg", Quantity(1.0, "piece"))
+    assert repr(t) == "1 egg"

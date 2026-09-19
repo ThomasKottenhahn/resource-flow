@@ -54,7 +54,7 @@ def test_diamond_pattern_transitive_file_imports(tmp_path):
     resources, processes, query = ctx.resources, ctx.processes, ctx.query
     
     names = {p.name for p in processes}
-    assert "common.rf::p_common" in names
-    assert "left.rf::p_left" in names
-    assert "right.rf::p_right" in names
+    assert "common::p_common" in names
+    assert "left::p_left" in names
+    assert "right::p_right" in names
     assert len(processes) == 3 # Deduplicated common
