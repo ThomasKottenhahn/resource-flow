@@ -547,3 +547,37 @@ def test_relative_import_resolution(tmp_path):
     prog = parser.parse_file(str(main_rf))
     
     assert any(p.name == "lidl::proc" for p in prog.processes)
+
+def test_overriding_inherited_tag(tmp_path):
+    recipe_content = """
+    mod items [discrete] {
+        def 1 piece item1;
+        def 1 piece item2 [!discrete];
+    }
+    """
+    parser = RecipeParser()
+    prog = parser.parse_string(recipe_content, "virtual.rf")
+    
+    item1 = next(d for d in prog.defs if d.resource.name == "item1")
+    item2 = next(d for d in prog.defs if d.resource.name == "item2")
+    
+    assert "discrete" in item1.resource.tags
+    assert "discrete" not in item2.resource.tags
+    assert "!discrete" not in item2.resource.tags
+
+def test_negating_non_inherited_tag(tmp_path):
+    recipe_content = "def 1 piece item [!organic];"
+    parser = RecipeParser()
+    prog = parser.parse_string(recipe_content, "virtual.rf")
+    
+    item = prog.defs[0]
+    assert "organic" not in item.resource.tags
+    assert "!organic" not in item.resource.tags
+
+def test_defaulting_to_piece_for_unitless():
+    parser = RecipeParser()
+    prog = parser.parse_string('def 1 carrots;', "virtual.rf")
+    assert len(prog.defs) == 1
+    d = prog.defs[0]
+    assert d.quantity.val == 1.0
+    assert d.quantity.unit == "piece"

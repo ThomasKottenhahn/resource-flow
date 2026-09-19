@@ -76,9 +76,9 @@ class Resource:
 
 class Quantity:
     """Represents a numeric value associated with a unit of measurement."""
-    def __init__(self, val: float, unit: str) -> None:
+    def __init__(self, val: float, unit: str | None) -> None:
         self.val = val
-        self.unit = unit
+        self.unit = unit if unit else "piece"
 
     def __repr__(self) -> str:
         return f"{self.val} {self.unit}"

@@ -265,6 +265,8 @@ class RecipeTransformer(Transformer):
                 tag_type = t[0]
                 if tag_type == "flag":
                     proc_tags.add(t[1])
+                elif tag_type == "negated":
+                    proc_tags.add(f"!{t[1]}")
                 elif tag_type == "kv":
                     key, val_num, unit_str = t[1], t[2], t[3]
                     if key == "cost":
@@ -455,13 +457,25 @@ class RecipeParser:
         return first_part in imp.items
 
     @staticmethod
+    def _resolve_tags(inherited: set[str], current: set[str], current_negated: set[str] = frozenset()) -> set[str]:
+        result = set(inherited)
+        for t in current_negated:
+            result.discard(t)
+        for t in current:
+            if t.startswith("!"):
+                result.discard(t[1:])
+            else:
+                result.add(t)
+        return {t for t in result if not t.startswith("!")}
+
+    @staticmethod
     def _merge_implicit_file_module(items: list, file_path: str) -> tuple[list, set, str | None]:
         file_stem = Path(file_path).stem
         explicit_modules = [item for item in items if isinstance(item, Module)]
         
         if len(explicit_modules) == 1 and explicit_modules[0].name == file_stem:
             mod = explicit_modules[0]
-            inherited_tags = set(mod.tags)
+            inherited_tags = RecipeParser._resolve_tags(set(), set(mod.tags))
             inherited_supplier = mod.supplier
             new_items = []
             for item in items:
@@ -558,8 +572,7 @@ class RecipeParser:
                         item.fully_qualified_label = item.original_label
                         item.name = item.fully_qualified_label
                     
-                    if inherited_tags:
-                        item.tags = frozenset(set(item.tags) | inherited_tags)
+                    item.tags = frozenset(RecipeParser._resolve_tags(inherited_tags, item.tags))
                     
                     modules_map[mod_key].processes.append(item)
                     all_owned_processes.append(item)
@@ -568,12 +581,13 @@ class RecipeParser:
                 elif isinstance(item, Import):
                     modules_map[mod_key].imports.append(item)
                 elif isinstance(item, Module):
-                    new_tags = inherited_tags | set(item.tags)
+                    new_tags = RecipeParser._resolve_tags(inherited_tags, set(item.tags))
                     new_supplier = item.supplier if item.supplier is not None else inherited_supplier
                     walk(item.items, current_path + [item.name], new_tags, new_supplier)
                 elif isinstance(item, BasicResourceDef):
-                    if inherited_tags:
-                        item.resource.tags = frozenset(set(item.resource.tags) | inherited_tags)
+                    item.resource.tags = frozenset(RecipeParser._resolve_tags(
+                        inherited_tags, set(item.resource.tags), item.resource.negated_tags
+                    ))
                     if item.supplier is None:
                         item.supplier = inherited_supplier
                     defs.append(item)
