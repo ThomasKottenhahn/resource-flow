@@ -524,3 +524,61 @@ class ProgramContext:
     defs: list[BasicResourceDef]
     converts: list["ConvertStatement"] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.normalize_currencies()
+
+    def normalize_currencies(self) -> None:
+        used_currencies = set()
+        for r in self.resources:
+            if getattr(r, "cost_currency", None) is not None:
+                used_currencies.add(r.cost_currency)
+        for p in self.processes:
+            if getattr(p, "cost_currency", None) is not None:
+                used_currencies.add(p.cost_currency)
+
+        if not self.converts:
+            if len(used_currencies) > 1:
+                raise ValueError("Multiple currencies used but no convert statements provided.")
+            return
+
+        base_currency = self.converts[0].from_qty.unit
+
+        adj: dict[str, dict[str, float]] = {}
+        for c in self.converts:
+            from_c = c.from_qty.unit
+            to_c = c.to_qty.unit
+            rate = c.to_qty.val / c.from_qty.val
+            if from_c not in adj: adj[from_c] = {}
+            if to_c not in adj: adj[to_c] = {}
+            adj[from_c][to_c] = rate
+            adj[to_c][from_c] = 1.0 / rate
+
+        rates_to_base: dict[str, float] = {base_currency: 1.0}
+        
+        def dfs(curr: str, current_rate: float, visited: set[str]) -> None:
+            rates_to_base[curr] = current_rate
+            for neighbor, rate_curr_to_neighbor in adj.get(curr, {}).items():
+                rate_neighbor_to_curr = 1.0 / rate_curr_to_neighbor
+                rate_neighbor_to_base = rate_neighbor_to_curr * current_rate
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    dfs(neighbor, rate_neighbor_to_base, visited)
+
+        visited = {base_currency}
+        dfs(base_currency, 1.0, visited)
+
+        for c in used_currencies:
+            if c not in rates_to_base:
+                raise ValueError(f"Missing conversion for currency '{c}' to base currency '{base_currency}'.")
+
+        for r in self.resources:
+            c = getattr(r, "cost_currency", None)
+            if c is not None:
+                r.cost = r.cost * rates_to_base[c]
+                r.cost_currency = base_currency
+
+        for p in self.processes:
+            c = getattr(p, "cost_currency", None)
+            if c is not None:
+                p.cost = p.cost * rates_to_base[c]
+                p.cost_currency = base_currency
