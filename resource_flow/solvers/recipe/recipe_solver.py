@@ -1,7 +1,8 @@
 from __future__ import annotations
 from ...dag import DAG, DAGEdge, DAGNode
-from ...models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, ProgramContext
+from ...models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, ProgramContext, BasicResourceDef
 from typing import Any
+import math
 from ..base import Solver
 
 class RecipeSolver(Solver):
@@ -11,7 +12,7 @@ class RecipeSolver(Solver):
         ctx: ProgramContext | set[Process] | None = None,
         processes: set[Process] | Query | None = None,
         query: Query | list[Resource] | None = None,
-        defs: list[Resource] | None = None,
+        defs: list[Resource | BasicResourceDef] | None = None,
     ) -> None:
         if isinstance(ctx, ProgramContext):
             actual_processes = ctx.processes
@@ -36,10 +37,11 @@ class RecipeSolver(Solver):
                 
         self._all_processes = sorted(actual_processes, key=lambda p: p.name)
         self.processes = sorted(filtered_processes, key=lambda p: p.name)
-        self.basic_resource_names = self._identify_basic_resources()
         self.processes_in_dag: list[Process] = []
         self.basic_requirements: set[str] = set()
+        self.resource_defs: dict[Resource, BasicResourceDef] = {}
         self._result_dag: DAG | None = None
+        self.basic_resource_names = self._identify_basic_resources()
 
     def _add_basic(self, r: Resource) -> None:
         """Register a resource as a basic resource."""
@@ -54,8 +56,13 @@ class RecipeSolver(Solver):
 
         # Populate from explicit defs
         for d in self.defs:
-            basics.add(d.name)
-            self._add_basic(d)
+            if isinstance(d, BasicResourceDef):
+                basics.add(d.name)
+                self._add_basic(d.resource)
+                self.resource_defs[d.resource] = d
+            else:
+                basics.add(d.name)
+                self._add_basic(d)
 
         for p in self.processes:
             for _, r in p.inp:
@@ -95,6 +102,24 @@ class RecipeSolver(Solver):
                 if self._matches_tags(res, basic_res):
                     return True
         return False
+
+    def _get_basic_options(self, res: Resource) -> list[Resource]:
+        """Get all valid basic resources that can satisfy the given resource requirement."""
+        options = []
+        if res.basic:
+            options.append(res)
+        if res.name in self.basic_resources:
+            for basic_res in self.basic_resources[res.name]:
+                if self._matches_tags(res, basic_res):
+                    options.append(basic_res)
+        
+        seen = set()
+        unique_options = []
+        for opt in options:
+            if opt not in seen:
+                seen.add(opt)
+                unique_options.append(opt)
+        return unique_options
 
     def find_producer(self, target: Resource | str) -> Process | None:
         """Find the first process capable of producing the target resource."""
@@ -166,7 +191,7 @@ class RecipeSolver(Solver):
             chosen_procs: list[Process],
             chosen_proc_names: set[str],
             active_stack: set[str],
-            basic_reqs: set[str],
+            basic_reqs: dict[str, Resource],
         ) -> None:
             unresolved = []
             for consumer, res in needed:
@@ -179,28 +204,40 @@ class RecipeSolver(Solver):
                     unresolved.append((consumer, res))
 
             if not unresolved:
-                dag_key = tuple(sorted(chosen_proc_names))
+                dag_key = (tuple(sorted(chosen_proc_names)), frozenset(basic_reqs.items()))
                 if dag_key not in seen_keys:
                     seen_keys.add(dag_key)
-                    results.append((list(chosen_procs), set(basic_reqs)))
+                    results.append((list(chosen_procs), dict(basic_reqs)))
                 return
 
             consumer, res = unresolved[0]
             producers = [p for p in self._find_all_producers(res) if p != consumer]
-            can_basic = self._can_be_basic(res)
+            basic_options = self._get_basic_options(res)
 
-            if not producers and not can_basic:
+            if not producers and not basic_options:
                 missing_resources.add(res.name)
                 return
 
-            if can_basic:
-                search(
-                    unresolved[1:],
-                    chosen_procs,
-                    chosen_proc_names,
-                    active_stack,
-                    basic_reqs | {res.name},
-                )
+            if res.name in basic_reqs:
+                if self._matches_tags(res, basic_reqs[res.name]):
+                    search(
+                        unresolved[1:],
+                        chosen_procs,
+                        chosen_proc_names,
+                        active_stack,
+                        basic_reqs,
+                    )
+            elif basic_options:
+                for basic_res in basic_options:
+                    new_reqs = dict(basic_reqs)
+                    new_reqs[res.name] = basic_res
+                    search(
+                        unresolved[1:],
+                        chosen_procs,
+                        chosen_proc_names,
+                        active_stack,
+                        new_reqs,
+                    )
 
             for proc in producers:
                 if proc.name in active_stack:
@@ -234,7 +271,7 @@ class RecipeSolver(Solver):
                     chosen_procs.pop()
 
         initial_needed: list[tuple[Process | None, Resource]] = [(None, res) for _, res in self.query.query]
-        search(initial_needed, [], set(), set(), set())
+        search(initial_needed, [], set(), set(), {})
 
         valid_topologies = []
         for procs, basic_reqs in results:
@@ -274,19 +311,16 @@ class RecipeSolver(Solver):
                     ))
 
         for name, qty in demands.items():
-            dag_res = dag_basic_resources.get(name)
-            global_res_list = self.basic_resources.get(name, [])
-            # Pick the best global basic resource (prefer one with cost > 0)
-            global_res = next((r for r in global_res_list if r.cost > 0), global_res_list[0] if global_res_list else None)
-            if dag_res and dag_res.cost > 0:
-                basic_res: Resource | None = dag_res
-            elif global_res and global_res.cost > 0:
-                basic_res = global_res
-            else:
-                basic_res = dag_res or global_res
+            basic_res = dag_basic_resources.get(name)
+            if not basic_res:
+                global_res_list = self.basic_resources.get(name, [])
+                basic_res = next((r for r in global_res_list if r.cost > 0), global_res_list[0] if global_res_list else None)
             if basic_res:
+                supplier = None
+                if basic_res in self.resource_defs:
+                    supplier = self.resource_defs[basic_res].supplier
                 edges.append(DAGEdge(
-                    source=None,
+                    source=supplier,
                     target=None,
                     resource=basic_res,
                     quantity=qty,
@@ -309,7 +343,7 @@ class RecipeSolver(Solver):
 
         return DAG(nodes=nodes, edges=edges)
 
-    def _scale_topology(self, processes: list[Process], basic_reqs: set[str]) -> tuple[DAG, dict[str, float], dict[str, Quantity], dict[str, Quantity]]:
+    def _scale_topology(self, processes: list[Process], basic_reqs: dict[str, Resource]) -> tuple[DAG, dict[str, float], dict[str, Quantity], dict[str, Quantity]]:
         """Calculate scale factors for all processes in the topology and construct its fully scaled DAG."""
         demands: dict[str, Quantity] = {}
         for qty, res in self.query.query:
@@ -330,6 +364,9 @@ class RecipeSolver(Solver):
                     scale = converted_demand.val / qty_out.val
                     if scale > scale_factor:
                         scale_factor = scale
+
+            if any("discrete" in res_out.tags for _, res_out in proc.out):
+                scale_factor = float(math.ceil(scale_factor))
 
             process_scales[proc.name] = scale_factor
 
@@ -369,21 +406,33 @@ class RecipeSolver(Solver):
                     else:
                         demands[res_in.name] = needed
 
-        dag_basic_resources = {}
-        for proc in processes:
-            for _, r in proc.inp:
-                if r.basic or r.name in demands:
-                    if r.name not in dag_basic_resources or r.cost > 0:
-                        dag_basic_resources[r.name] = r
-        for _, r in self.query.query:
-            if r.basic or r.name in demands:
-                if r.name not in dag_basic_resources or r.cost > 0:
-                    dag_basic_resources[r.name] = r
+        for name, qty in demands.items():
+            basic_res = basic_reqs.get(name)
+            # Need to get the actual basic resource if possible
+            if not basic_res:
+                global_res_list = self.basic_resources.get(name, [])
+                basic_res = next((r for r in global_res_list if r.cost > 0), global_res_list[0] if global_res_list else None)
 
-        dag = self._build_dag_from_solution(processes, process_scales, demands, dag_basic_resources)
+            if basic_res and "discrete" in basic_res.tags:
+                batch_qty = Quantity(1.0, qty.unit)
+                if basic_res in self.resource_defs:
+                    batch_qty = self.resource_defs[basic_res].quantity.convert_to(qty.unit)
+                
+                scale = qty.val / batch_qty.val
+                rounded_scale = math.ceil(scale)
+                if rounded_scale > scale:
+                    actual_qty = Quantity(rounded_scale * batch_qty.val, qty.unit)
+                    excess = Quantity(actual_qty.val - qty.val, qty.unit)
+                    if name in surplus:
+                        surplus[name] += excess
+                    else:
+                        surplus[name] = excess
+                    demands[name] = actual_qty
+
+        dag = self._build_dag_from_solution(processes, process_scales, demands, basic_reqs)
         return dag, process_scales, demands, surplus
 
-    def _evaluate_dags(self, scaled_candidates: list[tuple[DAG, list[Process], set[str], dict[str, float], dict[str, Quantity], dict[str, Quantity]]], relational_goals: list[Any], aggregate_goals: list[Any]) -> tuple[list[dict[str, Any]], tuple[Any, float] | None]:
+    def _evaluate_dags(self, scaled_candidates: list[tuple[DAG, list[Process], dict[str, Resource], dict[str, float], dict[str, Quantity], dict[str, Quantity]]], relational_goals: list[Any], aggregate_goals: list[Any]) -> tuple[list[dict[str, Any]], tuple[Any, float] | None]:
         """Filter candidates by relational goals and compute scores for aggregate goals to rank them."""
         valid_candidates = []
         closest_diff = float("inf")
@@ -421,7 +470,7 @@ class RecipeSolver(Solver):
 
         return valid_candidates, closest_info
 
-    def build_dag(self) -> tuple[list[Process], set[str]]:
+    def build_dag(self) -> tuple[list[Process], dict[str, Resource]]:
         """Build and cache the optimal process DAG. Returns (processes, basic_requirements)."""
         if self.processes_in_dag:
             return self.processes_in_dag, self.basic_requirements

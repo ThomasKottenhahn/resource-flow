@@ -132,3 +132,44 @@ def test_visualizer_with_tools():
     # Test generate_mermaid
     mermaid = viz.generate_mermaid(time_unit="min")
     assert "using 1.0 piece furnace" in mermaid
+
+def _make_dag_with_supplier():
+    carrots = Resource("carrots", basic=True, cost=1.0)
+    
+    node = DAGNode(process=Process("chop", set(), set()), scale=1.0)
+    edge_in = DAGEdge(
+        source="Lidl",
+        target=None,
+        resource=carrots,
+        quantity=Quantity(300.0, "g"),
+    )
+    
+    dag = DAG(nodes=[node], edges=[edge_in])
+    demands = {"carrots": Quantity(300.0, "g")}
+    surplus: dict[str, Quantity] = {}
+    basic_resources = {"carrots": [carrots]}
+    query = Query(query=set())
+    return dag, demands, surplus, basic_resources, query
+
+def test_visualizer_print_plan_with_suppliers():
+    dag, demands, surplus, basic_resources, query = _make_dag_with_supplier()
+    viz = Visualizer(dag, demands, surplus, basic_resources, query)
+
+    captured = io.StringIO()
+    sys.stdout = captured
+    try:
+        viz.print_plan()
+    finally:
+        sys.stdout = sys.__stdout__
+
+    output = captured.getvalue()
+    assert "Lidl:" in output
+    assert "300.00 g carrots" in output
+
+def test_visualizer_generate_mermaid_with_suppliers():
+    dag, demands, surplus, basic_resources, query = _make_dag_with_supplier()
+    viz = Visualizer(dag, demands, surplus, basic_resources, query)
+
+    mermaid = viz.generate_mermaid()
+    assert 'Lidl["Lidl"]' in mermaid
+    assert 'Lidl --> basic_carrots' in mermaid

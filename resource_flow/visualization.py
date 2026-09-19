@@ -139,17 +139,28 @@ class Visualizer:
                 )
 
         print("\n=== TOTAL BASIC RESOURCES REQUIRED ===")
+        supplier_groups: dict[str, list[tuple[str, Quantity, Resource | None]]] = {}
         for name, qty in sorted(self.demands.items()):
             edge = next((e for e in self.dag.edges if self.dag._is_basic_edge(e) and e.resource.name == name), None)
             basic_res = edge.resource if edge else None
+            supplier = edge.source if edge and isinstance(edge.source, str) else None
             if not basic_res and self.basic_resources.get(name):
                 basic_res = self.basic_resources[name][0]
-            res_tags_str = self._format_resource_tags(basic_res)
-            cost_str = ""
-            if basic_res and basic_res.cost > 0:
-                cost_val = basic_res.calculate_cost(qty)
-                cost_str = f" (Cost: {cost_val:.2f})"
-            print(f"- {qty.val:.2f} {qty.unit} {name}{res_tags_str}{cost_str}")
+            
+            group_name = supplier if supplier else "Global"
+            if group_name not in supplier_groups:
+                supplier_groups[group_name] = []
+            supplier_groups[group_name].append((name, qty, basic_res))
+            
+        for supplier_name in sorted(supplier_groups.keys()):
+            print(f"{supplier_name}:")
+            for name, qty, basic_res in supplier_groups[supplier_name]:
+                res_tags_str = self._format_resource_tags(basic_res)
+                cost_str = ""
+                if basic_res and basic_res.cost > 0:
+                    cost_val = basic_res.calculate_cost(qty)
+                    cost_str = f" (Cost: {cost_val:.2f})"
+                print(f" - {qty.val:.2f} {qty.unit} {name}{res_tags_str}{cost_str}")
         print("======================================\n")
 
         metrics = self.get_metrics(time_unit=time_unit)
@@ -186,9 +197,13 @@ class Visualizer:
             label = "\\n".join(node_parts)
             lines.append(f'    {proc.name}["{label}"]')
 
+        supplier_nodes: set[str] = set()
+
         for name in sorted(basic_reqs):
             edge = next((e for e in self.dag.edges if self.dag._is_basic_edge(e) and e.resource.name == name), None)
             res = edge.resource if edge else None
+            supplier = edge.source if edge and isinstance(edge.source, str) else None
+
             if not res and self.basic_resources.get(name):
                 res = self.basic_resources[name][0]
             res_tags_str = self._format_resource_tags(res)
@@ -203,6 +218,13 @@ class Visualizer:
                 )
             else:
                 lines.append(f'    basic_{name}["{name}*{res_tags_str}"]')
+                
+            if supplier:
+                supplier_id = supplier.replace(" ", "_")
+                if supplier not in supplier_nodes:
+                    supplier_nodes.add(supplier)
+                    lines.append(f'    {supplier_id}["{supplier}"]')
+                lines.append(f'    {supplier_id} --> basic_{name}')
 
         query_targets = []
         for qty, res in sorted(self.query.query, key=lambda item: item[1].name):

@@ -259,12 +259,65 @@ class Import:
 
 class Module:
     """Represents an inline module containing processes and other modules."""
-    def __init__(self, name: str, items: list[Any]) -> None:
+    def __init__(self, name: str, items: list[Any], tags: list[str] | None = None, supplier: str | None = None) -> None:
         self.name = name
         self.items = items
+        self.tags = tags or []
+        self.supplier = supplier
 
     def __repr__(self) -> str:
-        return f"mod {self.name} {{ {len(self.items)} items }}"
+        s = f"mod {self.name}"
+        if self.tags:
+            s += f" [{', '.join(self.tags)}]"
+        if self.supplier:
+            s += f" at {self.supplier}"
+        s += f" {{ {len(self.items)} items }}"
+        return s
+
+
+class BasicResourceDef:
+    """Represents a standalone definition of a basic resource with a specific quantity and optional supplier."""
+    def __init__(self, resource: "Resource", quantity: "Quantity", supplier: str | None = None) -> None:
+        self.resource = resource
+        self.quantity = quantity
+        self.supplier = supplier
+
+    @property
+    def name(self) -> str:
+        return self.resource.name
+
+    @property
+    def basic(self) -> bool:
+        return self.resource.basic
+
+    def __repr__(self) -> str:
+        s = f"def {self.quantity} {self.resource.name}"
+        if self.supplier:
+            s += f" at {self.supplier}"
+        return s
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, BasicResourceDef):
+            return False
+        return self.resource == other.resource and self.quantity == other.quantity and self.supplier == other.supplier
+
+    def __hash__(self) -> int:
+        return hash((self.resource, self.quantity, self.supplier))
+
+
+class MacroDef:
+    """Represents a macro definition binding an identifier to a multiset."""
+    def __init__(self, name: str, multiset: set) -> None:
+        self.name = name
+        self.multiset = multiset
+
+    def __repr__(self) -> str:
+        return f"let {self.name} = {self.multiset}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MacroDef):
+            return False
+        return self.name == other.name and self.multiset == other.multiset
 
 
 class Goal:
@@ -442,4 +495,4 @@ class ProgramContext:
     resources: set[Resource]
     processes: set[Process]
     query: Query
-    defs: list[Resource]
+    defs: list[BasicResourceDef]
