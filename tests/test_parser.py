@@ -513,3 +513,37 @@ def test_convert_stmt():
     c = prog.converts[0]
     assert c.from_qty == Quantity(1.0, "€")
     assert c.to_qty == Quantity(7.48, "DKK")
+
+def test_implicit_file_module_merging(tmp_path):
+    lidl_rf = tmp_path / "lidl.rf"
+    lidl_rf.write_text("mod lidl [discrete] at Lidl {\n  def 1 piece item;\n}")
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(lidl_rf))
+    assert len(ctx.defs) == 1
+    assert "discrete" in ctx.defs[0].resource.tags
+    assert ctx.defs[0].supplier == "Lidl"
+
+def test_no_merge_for_multiple_modules(tmp_path):
+    multi_rf = tmp_path / "multi.rf"
+    multi_rf.write_text("mod multi [discrete] {\n  def 1 piece item;\n}\nmod other [fast] {\n  def 1 piece item2;\n}")
+    parser = RecipeParser()
+    ctx = parser.parse_file(str(multi_rf))
+    item1 = next(d for d in ctx.defs if d.resource.name == "item")
+    item2 = next(d for d in ctx.defs if d.resource.name == "item2")
+    assert "discrete" in item1.resource.tags
+    assert "fast" in item2.resource.tags
+    assert "discrete" not in item2.resource.tags
+
+def test_relative_import_resolution(tmp_path):
+    subdir = tmp_path / "shops"
+    subdir.mkdir()
+    lidl_rf = subdir / "lidl.rf"
+    lidl_rf.write_text("def 1 piece imported_item;\nproc: 1 piece input -> 1 piece output;")
+    
+    main_rf = tmp_path / "main.rf"
+    main_rf.write_text("use ./shops/lidl;")
+    
+    parser = RecipeParser()
+    prog = parser.parse_file(str(main_rf))
+    
+    assert any(p.name == "lidl::proc" for p in prog.processes)

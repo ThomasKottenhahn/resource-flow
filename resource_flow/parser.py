@@ -496,6 +496,25 @@ class RecipeParser:
         tree = self.lark.parse(content)
         items = RecipeTransformer().transform(tree)
 
+        # Check for implicit file module merging
+        file_stem = Path(file_path).stem
+        explicit_modules = [item for item in items if isinstance(item, Module)]
+        
+        file_inherited_tags = set()
+        file_inherited_supplier = None
+        
+        if len(explicit_modules) == 1 and explicit_modules[0].name == file_stem:
+            mod = explicit_modules[0]
+            file_inherited_tags = set(mod.tags)
+            file_inherited_supplier = mod.supplier
+            new_items = []
+            for item in items:
+                if item is mod:
+                    new_items.extend(mod.items)
+                else:
+                    new_items.append(item)
+            items = new_items
+
         all_owned_processes: list[Process] = []
         all_reexported_processes: list[Process] = []
         queries: list[Query] = []
@@ -546,7 +565,7 @@ class RecipeParser:
                 elif isinstance(item, ConvertStatement):
                     converts.append(item)
                     modules_map[mod_key].converts.append(item)
-        walk(items, [])
+        walk(items, [], file_inherited_tags, file_inherited_supplier)
         
         exported_by_module: dict[str, ModuleExports] = {}
         
@@ -609,7 +628,10 @@ class RecipeParser:
                         target_res = _cache[target_resolved_path]
                         queries.append(target_res.query)
                         
-                        prefix = imp.module_name
+                        if imp.is_file:
+                            prefix = Path(imp.module_name).stem
+                        else:
+                            prefix = imp.module_name
                         import copy
                         for p in target_res.owned_processes:
                             new_p = copy.copy(p)
