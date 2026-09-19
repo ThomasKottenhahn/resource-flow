@@ -1,6 +1,6 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef, ConvertStatement
 from dataclasses import dataclass, field
 
 @dataclass
@@ -9,6 +9,7 @@ class ModuleScope:
     imports: list[Import] = field(default_factory=list)
     defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
+    converts: list[ConvertStatement] = field(default_factory=list)
 
 @dataclass
 class ParseResult:
@@ -21,6 +22,8 @@ class ParseResult:
     reexported_defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
     reexported_macros: dict[str, set] = field(default_factory=dict)
+    converts: list[ConvertStatement] = field(default_factory=list)
+    reexported_converts: list[ConvertStatement] = field(default_factory=list)
 
 @dataclass(frozen=True)
 class MacroRef:
@@ -31,6 +34,7 @@ class ModuleExports:
     processes: set[Process] = field(default_factory=set)
     defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
+    converts: list[ConvertStatement] = field(default_factory=list)
 
 
 class RecipeTransformer(Transformer):
@@ -47,6 +51,14 @@ class RecipeTransformer(Transformer):
             raise ValueError(f"Macro '{ident}' is already defined.")
         self.macros[ident] = items[1]
         return MacroDef(ident, items[1])
+
+    def convert_stmt(self, items):
+        """Parse a convert statement."""
+        val1 = float(items[0])
+        unit1 = str(items[1])
+        val2 = float(items[2])
+        unit2 = str(items[3])
+        return ConvertStatement(Quantity(val1, unit1), Quantity(val2, unit2))
 
     def macro_ref(self, items):
         """Resolve a macro reference."""
@@ -91,22 +103,27 @@ class RecipeTransformer(Transformer):
     def resource(self, items):
         """Parse a resource and its quantity."""
         val = float(items[0])
-        unit = str(items[1])
-        name = str(items[2])
+        unit = "piece"
+        name = ""
         is_basic = False
         parsed_tags = []
 
-        for item in items[3:]:
+        for item in items[1:]:
             if item is None:
                 continue
-            if isinstance(item, list):
+            if getattr(item, "type", "") == "UNIT":
+                unit = str(item)
+            elif isinstance(item, list):
                 parsed_tags = item
             elif str(item) == "*":
                 is_basic = True
+            elif isinstance(item, str):
+                name = item
 
         tags = set()
         negated_tags = set()
         cost = 0.0
+        cost_currency = None
 
         qty = Quantity(val, unit)
         base_resource_qty = qty.to_base_unit()
@@ -121,6 +138,7 @@ class RecipeTransformer(Transformer):
                 key, val_num, unit_str = t[1], t[2], t[3]
                 if key == "cost":
                     cost = val_num
+                    cost_currency = unit_str
                 elif key == "time":
                     raise ValueError("Resources cannot have a time tag")
                 else:
@@ -148,6 +166,7 @@ class RecipeTransformer(Transformer):
             negated_tags=negated_tags,
             cost=unit_cost,
             cost_unit=cost_unit,
+            cost_currency=cost_currency,
         )
 
     def multiset(self, items):
@@ -237,6 +256,7 @@ class RecipeTransformer(Transformer):
 
         proc_tags = set()
         cost = 0.0
+        cost_currency = None
         proc_time = 0.0
         time_unit = "min"
 
@@ -249,6 +269,7 @@ class RecipeTransformer(Transformer):
                     key, val_num, unit_str = t[1], t[2], t[3]
                     if key == "cost":
                         cost = val_num
+                        cost_currency = unit_str
                     elif key == "time":
                         proc_time = val_num
                         if unit_str:
@@ -277,6 +298,7 @@ class RecipeTransformer(Transformer):
             time_unit=time_unit,
             tags=proc_tags,
             tools=tools,
+            cost_currency=cost_currency,
         )
 
     def query(self, items):
@@ -390,6 +412,9 @@ class RecipeTransformer(Transformer):
         if module_name_raw.startswith('"') and module_name_raw.endswith('"'):
             module_name = module_name_raw[1:-1]
             is_file = True
+        elif module_name_raw.startswith('./') or module_name_raw.startswith('../'):
+            module_name = module_name_raw
+            is_file = True
         else:
             module_name = module_name_raw
 
@@ -437,6 +462,7 @@ class RecipeParser:
             processes=res.global_processes,
             query=res.query,
             defs=res.defs + res.reexported_defs,
+            converts=res.converts + res.reexported_converts,
         )
 
     def parse_string(self, content: str, file_path: str) -> ProgramContext:
@@ -447,6 +473,7 @@ class RecipeParser:
             processes=res.global_processes,
             query=res.query,
             defs=res.defs + res.reexported_defs,
+            converts=res.converts + res.reexported_converts,
         )
 
     def _parse_file_internal(self, file_path: str, _cache: dict[str, ParseResult]) -> ParseResult:
@@ -473,6 +500,7 @@ class RecipeParser:
         all_reexported_processes: list[Process] = []
         queries: list[Query] = []
         defs: list[Resource] = []
+        converts: list[ConvertStatement] = []
         
         # Map module paths to their direct contents
         modules_map: dict[str, ModuleScope] = {}
@@ -515,6 +543,9 @@ class RecipeParser:
                     modules_map[mod_key].defs.append(item)
                 elif isinstance(item, MacroDef):
                     modules_map[mod_key].macros[item.name] = item.multiset
+                elif isinstance(item, ConvertStatement):
+                    converts.append(item)
+                    modules_map[mod_key].converts.append(item)
         walk(items, [])
         
         exported_by_module: dict[str, ModuleExports] = {}
@@ -540,6 +571,7 @@ class RecipeParser:
                 exports.processes.update(modules_map[mod_key].processes)
                 exports.defs.extend(modules_map[mod_key].defs)
                 exports.macros.update(modules_map[mod_key].macros)
+                exports.converts.extend(modules_map[mod_key].converts)
                 
                 for imp in modules_map[mod_key].imports:
                     # 1. Try local module first if it's not explicitly a file (string literal)
@@ -553,6 +585,7 @@ class RecipeParser:
                                 exports.processes.add(p)
                         exports.defs.extend(filter_list(target_exports.defs, imp.items))
                         exports.macros.update(filter_dict(target_exports.macros, imp.items))
+                        exports.converts.extend(target_exports.converts)
                     else:
                         # 2. File import or fallback for bare module that wasn't local
                         target_path = Path(file_path).parent / imp.module_name
@@ -595,6 +628,7 @@ class RecipeParser:
                         exports.defs.extend(filter_list(target_res.defs + target_res.reexported_defs, imp.items))
                         exports.macros.update(filter_dict(target_res.macros, imp.items))
                         exports.macros.update(filter_dict(target_res.reexported_macros, imp.items))
+                        exports.converts.extend(target_res.converts + target_res.reexported_converts)
                                     
             exported_by_module[mod_key] = exports
             visited.remove(mod_key)
@@ -643,6 +677,9 @@ class RecipeParser:
         reexported_defs = list(set(global_exports.defs) - set(defs))
         local_macros = modules_map[""].macros if "" in modules_map else {}
         reexported_macros = {k: v for k, v in global_exports.macros.items() if k not in local_macros}
+        
+        local_converts = modules_map[""].converts if "" in modules_map else []
+        reexported_converts = [c for c in global_exports.converts if c not in local_converts]
             
         res = ParseResult(
             resources=resources,
@@ -654,6 +691,8 @@ class RecipeParser:
             reexported_defs=reexported_defs,
             macros=local_macros,
             reexported_macros=reexported_macros,
+            converts=local_converts,
+            reexported_converts=reexported_converts,
         )
         _cache[target_resolved] = res
         return res

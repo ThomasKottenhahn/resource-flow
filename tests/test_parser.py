@@ -1,6 +1,6 @@
 import pytest
 from resource_flow.parser import RecipeParser
-from resource_flow.models import Process, Query, Quantity, Resource
+from resource_flow.models import Process, Query, Quantity, Resource, ConvertStatement
 
 
 def test_parser_with_simple_recipe(tmp_path):
@@ -464,3 +464,52 @@ def test_parse_macro_def(tmp_path):
     ctx = parser._parse_file_internal(str(recipe_file), {})
     
     assert "x" in ctx.macros
+
+def test_relative_import_parsing(tmp_path):
+    # Create a local file to import in a subdirectory
+    subdir = tmp_path / "subdir"
+    subdir.mkdir()
+    local_mod = subdir / "local.rf"
+    local_mod.write_text("def 1 piece imported_resource;")
+
+    main_mod = tmp_path / "main.rf"
+    main_mod.write_text('use ./subdir/local;')
+
+    parser = RecipeParser()
+    prog = parser.parse_file(str(main_mod))
+    
+    assert any(r.name == "imported_resource" for r in prog.resources)
+
+def test_negated_tags():
+    parser = RecipeParser()
+    prog = parser.parse_string('def 1 piece apple [!discrete];', "virtual.rf")
+    res = list(prog.resources)[0]
+    assert "discrete" in res.negated_tags
+
+def test_unit_less_quantities():
+    parser = RecipeParser()
+    prog = parser.parse_string('def 10 apple *;', "virtual.rf")
+    assert len(prog.defs) == 1
+    d = prog.defs[0]
+    assert d.quantity.val == 10
+    assert d.quantity.unit == "piece"
+
+def test_currency_in_costs():
+    parser = RecipeParser()
+    prog = parser.parse_string('def 1 piece apple * [cost: 10 USD];', "virtual.rf")
+    res = list(prog.resources)[0]
+    assert res.cost == 10.0
+    assert res.cost_currency == "USD"
+    
+    prog2 = parser.parse_string('def 1 piece banana * [cost: 5 €];', "virtual.rf")
+    res2 = list(prog2.resources)[0]
+    assert res2.cost == 5.0
+    assert res2.cost_currency == "€"
+
+def test_convert_stmt():
+    parser = RecipeParser()
+    prog = parser.parse_string('convert 1 € = 7.48 DKK;', "virtual.rf")
+    assert len(prog.converts) == 1
+    c = prog.converts[0]
+    assert c.from_qty == Quantity(1.0, "€")
+    assert c.to_qty == Quantity(7.48, "DKK")

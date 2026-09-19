@@ -3,6 +3,7 @@ program: program_item*
                  | query ";"
                  | def_stmt ";"
                  | let_stmt ";"
+                 | convert_stmt ";"
                  | module
 
     def_stmt: "def" resource supplier_clause?
@@ -13,13 +14,15 @@ program: program_item*
     ?module_item: statement ";"
                 | let_stmt ";"
                 | def_stmt ";"
+                | convert_stmt ";"
                 | module
 
     ?statement: transition
               | import_stmt
 
     import_stmt: "use" import_source ("::" import_path)?
-    ?import_source: IDENTIFIER | ESCAPED_STRING
+    ?import_source: IDENTIFIER | ESCAPED_STRING | RELATIVE_PATH
+    RELATIVE_PATH: ("." | "..") "/" /[a-zA-Z0-9_.\/-]+/
     ?import_path: IDENTIFIER | "{" IDENTIFIER ("," IDENTIFIER)* "}"
 
     transition: proc_header multiset_expr "->" multiset_expr tool_clause?
@@ -34,7 +37,7 @@ program: program_item*
     multiset: multiset_item ("," multiset_item)*
     ?multiset_item: resource | IDENTIFIER -> macro_ref
 
-    resource: NUMBER UNIT name BASIC? tags?
+    resource: NUMBER UNIT? name BASIC? tags?
 
     tool_clause: "with" tool ("," tool)*
     using_clause: "using" tool ("," tool)*
@@ -56,16 +59,20 @@ program: program_item*
 
     min_goal: "min" IDENTIFIER
     max_goal: "max" IDENTIFIER
-    rel_goal: IDENTIFIER REL_OP NUMBER UNIT?
+    rel_goal: IDENTIFIER REL_OP NUMBER unit_or_curr?
 
     negated_tag: "!" IDENTIFIER
-    kv_tag: IDENTIFIER ":" NUMBER UNIT?
+    kv_tag: IDENTIFIER ":" NUMBER unit_or_curr?
     flag_tag: IDENTIFIER
+
+    convert_stmt: "convert" NUMBER unit_or_curr "=" NUMBER unit_or_curr
+    ?unit_or_curr: UNIT | IDENTIFIER | CURRENCY_SYM
 
     REL_OP: "<=" | "<" | ">=" | ">" | "==" | "!="
 
     BASIC: "*"
     UNIT: "mg" | "g" | "kg" | "ml" | "l" | "piece" | "min" | "s" | "h" | "kWh" | "kJ"
+    CURRENCY_SYM: "€" | "$" | "£"
     
     IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_]*/
 

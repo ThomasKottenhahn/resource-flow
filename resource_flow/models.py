@@ -15,6 +15,7 @@ class Resource:
         negated_tags: set[str] | frozenset[str] | None = None,
         cost: float = 0.0,
         cost_unit: str | None = None,
+        cost_currency: str | None = None,
     ) -> None:
         self.name = name
         initial_tags = set(tags) if tags else set()
@@ -24,6 +25,7 @@ class Resource:
         self.negated_tags = frozenset(negated_tags) if negated_tags else frozenset()
         self.cost = float(cost)
         self.cost_unit = cost_unit
+        self.cost_currency = cost_currency
 
     @property
     def basic(self) -> bool:
@@ -63,11 +65,12 @@ class Resource:
             and self.negated_tags == other.negated_tags
             and self.cost == other.cost
             and self.cost_unit == other.cost_unit
+            and getattr(self, "cost_currency", None) == getattr(other, "cost_currency", None)
         )
 
     def __hash__(self) -> int:
         return hash(
-            (self.name, self.tags, self.negated_tags, self.cost, self.cost_unit)
+            (self.name, self.tags, self.negated_tags, self.cost, self.cost_unit, getattr(self, "cost_currency", None))
         )
 
 
@@ -191,6 +194,7 @@ class Process:
         tags: set[str] | frozenset[str] | None = None,
         tools: set["Tool"] | frozenset["Tool"] | None = None,
         fully_qualified_label: str | None = None,
+        cost_currency: str | None = None,
     ) -> None:
         self.original_label = original_label
         self.fully_qualified_label = fully_qualified_label or original_label
@@ -202,6 +206,7 @@ class Process:
         self.time_unit = time_unit
         self.tags = frozenset(tags) if tags else frozenset()
         self.tools = frozenset(tools) if tools else frozenset()
+        self.cost_currency = cost_currency
 
     def __repr__(self) -> str:
         tag_strs = [t for t in sorted(self.tags)]
@@ -490,9 +495,29 @@ class Query:
         return missing
 
 
+class ConvertStatement:
+    """Represents a currency/unit conversion statement."""
+    def __init__(self, from_qty: "Quantity", to_qty: "Quantity") -> None:
+        self.from_qty = from_qty
+        self.to_qty = to_qty
+
+    def __repr__(self) -> str:
+        return f"convert {self.from_qty.val} {self.from_qty.unit} = {self.to_qty.val} {self.to_qty.unit}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ConvertStatement):
+            return False
+        return self.from_qty == other.from_qty and self.to_qty == other.to_qty
+
+    def __hash__(self) -> int:
+        return hash((self.from_qty, self.to_qty))
+
+
 @dataclass
 class ProgramContext:
     resources: set[Resource]
     processes: set[Process]
     query: Query
     defs: list[BasicResourceDef]
+    converts: list["ConvertStatement"] = field(default_factory=list)
+
