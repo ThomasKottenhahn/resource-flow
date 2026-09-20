@@ -1,0 +1,10 @@
+def 100 piece resistors [cost: 2.00, discrete] at LocalDistributor;
+def 500 piece resistors [cost: 8.00, discrete] at BulkImporter;
+
+def 10 piece capacitors [cost: 1.50, discrete] at LocalDistributor;
+def 100 piece capacitors [cost: 10.00, discrete] at BulkImporter;
+
+assemble_board [time: 5 min]:
+    20 piece resistors, 5 piece capacitors -> 1 piece amplifier_board;
+
+[cheapest] make 12 piece amplifier_board;

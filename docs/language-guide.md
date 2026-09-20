@@ -40,6 +40,8 @@ Resource Flow supports standard units and converts between them automatically. H
 | **Volume** | `ml`, `l` |
 | **Count / Discrete** | `piece` |
 
+If you omit the unit (e.g. `1 carrots`), it automatically defaults to `piece`.
+
 What happens if you request more than a single batch? Take the tea recipe from Step 1 and change the query:
 
 ```text
@@ -83,22 +85,25 @@ make 280 g stir_fry;
 You can attach numeric metadata to basic resources and processes using key-value tags. Resource Flow aggregates these metrics across the entire process graph.
 
 ```text
+convert 1 EUR = 1.10 USD;
+
 chop_fruit [time: 2 min, co2: 0.1 kg, manual_labour]:
-    200 g mango * [cost: 4.00, co2: 0.8 kg], 150 g banana * [cost: 1.50, co2: 0.3 kg]
+    200 g mango * [cost: 4.40 USD, co2: 0.8 kg], 150 g banana * [cost: 1.50 EUR, co2: 0.3 kg]
     -> 350 g fruit_mix;
 
 blend_manual [time: 3 min, cost: 0, co2: 0, manual_labour]:
-    350 g fruit_mix, 200 ml milk * [cost: 1.00, co2: 0.5 kg]
+    350 g fruit_mix, 200 ml milk * [cost: 1.10 USD, co2: 0.5 kg]
     -> 500 ml smoothie;
 
-blend_electric [time: 1 min, cost: 0.50, co2: 0.4 kg]:
-    350 g fruit_mix, 200 ml milk * [cost: 1.00, co2: 0.5 kg]
+blend_electric [time: 1 min, cost: 0.50 EUR, co2: 0.4 kg]:
+    350 g fruit_mix, 200 ml milk * [cost: 1.10 USD, co2: 0.5 kg]
     -> 500 ml smoothie;
 
 make 500 ml smoothie;
 ```
 
-- **Assign costs to basic resources.** `200 g mango * [cost: 4.00]` sets the batch cost to 4.00. The solver scales this linearly if it needs more mango.
+- **Mix currencies using `convert`.** Use `convert 1 EUR = 1.10 USD;` to define exchange rates. The first currency (`EUR`) becomes the base currency, and the solver automatically converts costs like `4.40 USD` into EUR.
+- **Assign costs to basic resources.** `200 g mango * [cost: 4.40 USD]` sets the batch cost. The solver scales this linearly if it needs more mango.
 - **Assign time to processes.** `[time: 2 min]` means chopping takes 2 minutes per batch. Time scales with the process scale factor.
 - **Process execution costs work the same way.** They also scale linearly.
 - **Add custom quantitative tags to any resource or process.** `[co2: 0.8 kg]` adds a numeric CO₂ metric. The solver aggregates these metrics across the graph just like cost. You can optimize for them later with `[min co2]`.
@@ -178,7 +183,27 @@ The solver evaluates goals left to right:
 
 ---
 
-## Step 6. Multiple queries
+## Step 6. Suppliers and batching
+
+Basic resources often come from specific suppliers in fixed batch sizes. The solver can explore different suppliers and buy in discrete batches to fulfill demands. Let's expand our forging recipe:
+
+```text
+def 2 kg steel_ingot [cost: 20.00, discrete] at LocalSmith;
+def 5 kg steel_ingot [cost: 45.00, discrete] at BulkSupplier;
+
+power_hammer_forge [cost: 25.00, time: 1 h]:
+    2 kg steel_ingot, 10 kWh electricity * [cost: 3.00]
+    -> 1 piece forged_blade;
+
+[cheapest] make 7 piece forged_blade;
+```
+
+- **Define suppliers with `at`.** Adding `at BulkSupplier` to a `def` groups resources by supplier. When multiple suppliers provide the same resource, the solver branches and picks the optimal one based on your goals (like `[cheapest]`).
+- **Scale by whole batches with `[discrete]`.** The `[discrete]` tag tells the solver that this resource cannot be divided. If you need 14 kg of `steel_ingot` (for 7 blades), `LocalSmith` would require 7 batches (140.00 cost). `BulkSupplier` would require 3 batches of 5 kg (135.00 cost) to meet the 14 kg demand, leaving a 1 kg surplus. Because of `[cheapest]`, the solver correctly selects `BulkSupplier`.
+
+---
+
+## Step 7. Multiple queries
 
 A single `.rf` file can contain multiple `make` queries. The solver evaluates each query independently and reports results for all of them:
 
@@ -198,7 +223,7 @@ Both queries share the same process definitions but are solved separately. The f
 
 ---
 
-## Step 7. Tools
+## Step 8. Tools
 
 Some processes require equipment that isn't consumed. These non-consumable requirements are called tools.
 
@@ -217,7 +242,7 @@ make 900 ml soup using 1 knife;
 
 ---
 
-## Step 8. Modules and imports
+## Step 9. Modules and imports
 
 As recipes grow, you can split them across files or group related processes into named modules.
 
@@ -259,10 +284,10 @@ Running `rflow pasta.rf` resolves the `use "sauce";` import, finds `sauce.rf` in
 
 ### Selective imports
 
-You can import specific items from a module:
+You can import specific items from a module, including processes, global definitions (`def`), and macros (`let`):
 
 ```text
-use sauce::make_sauce;
+use sauce::make_sauce, sauce::standard_tools;
 use kitchen::chop, boil;
 ```
 
@@ -271,9 +296,12 @@ use kitchen::chop, boil;
 You can also group processes inside a single file using `mod`:
 
 ```text
-mod sauces {
-    make_sauce: 250 g tomatoes * -> 250 g tomato_sauce;
-    make_pesto: 50 g basil *, 30 g nuts * -> 70 g pesto;
+mod sauces [vegan] {
+    def 250 g tomatoes;
+    make_sauce: 250 g tomatoes -> 250 g tomato_sauce;
+    
+    def 50 g cheese [!vegan];
+    make_cheese_sauce: 250 g tomatoes, 50 g cheese -> 300 g cheese_sauce;
 }
 
 use sauces;
@@ -286,5 +314,9 @@ make 550 g pasta;
 
 ### How modules work
 
-- **Every `.rf` file is implicitly a module named after its filename.** `sauce.rf` becomes the `sauce` module.
-- **Imports are transitive.** If module A imports module B, any file importing A also gets B's processes.
+- **Every `.rf` file is implicitly a module named after its filename.** For example, `sauce.rf` becomes the `sauce` module.
+- **File module merging.** If you declare a module inside a file with the exact same name (e.g. `mod sauce [vegan] at Market { ... }` inside `sauce.rf`), the tags and supplier attributes will automatically apply to the entire file's implicit module.
+- **Inheritance and Tag Negation.** Resources inside a module inherit the module's tags (e.g. `tomato_sauce` inherits `[vegan]`). You can cancel an inherited tag on a specific resource by negating it: `def 50 g cheese [!vegan];`.
+- **Relative imports.** You can import files from subdirectories using relative paths, like `use ./kitchen/sauce;`.
+- **Global imports.** The `use` statement imports not only processes, but also macros (`let`) and resource definitions (`def`).
+- **Imports are transitive.** If module A imports module B, any file importing A also gets B's processes, macros, and defs.

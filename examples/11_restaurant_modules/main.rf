@@ -1,0 +1,11 @@
+use ./prep/sauces;
+
+boil_pasta: 
+    250 g dry_pasta *, 1000 ml water * 
+    -> 350 g cooked_pasta;
+
+combine: 
+    350 g cooked_pasta, 260 g tomato_sauce 
+    -> 610 g vegan_pasta;
+
+[cheapest] make 610 g vegan_pasta;

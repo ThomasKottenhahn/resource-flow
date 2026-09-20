@@ -1,0 +1,14 @@
+mod sauces [vegan] at LocalMarket {
+    def 250 g tomatoes;
+    def 10 g basil;
+
+    make_tomato_sauce: 
+        250 g tomatoes, 10 g basil 
+        -> 260 g tomato_sauce;
+    
+    def 50 g cheese [!vegan] at DairyFarm;
+
+    make_cheese_sauce: 
+        250 g tomatoes, 50 g cheese 
+        -> 300 g cheese_sauce;
+}
