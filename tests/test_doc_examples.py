@@ -88,8 +88,8 @@ def test_doc_example_parses_and_solves(rel_path: str, line_no: int, code: str) -
         _resources, processes, query = ctx.resources, ctx.processes, ctx.query
 
         # If the snippet defines a query, also verify the solver runs
-        if query.query:
-            solver = RecipeSolver(processes, query)
+        if ctx.query.query:
+            solver = RecipeSolver(ctx)
             solver.solve()
     finally:
         Path(tmp_path).unlink(missing_ok=True)
