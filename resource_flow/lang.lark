@@ -5,6 +5,8 @@ program: program_item*
                  | let_stmt ";"
                  | convert_stmt ";"
                  | module
+                 | map_block
+                 | calendar_block
 
     def_stmt: "def" resource supplier_clause?
     let_stmt: "let" IDENTIFIER "=" multiset_expr
@@ -16,6 +18,8 @@ program: program_item*
                 | def_stmt ";"
                 | convert_stmt ";"
                 | module
+                | map_block
+                | calendar_block
 
     ?statement: transition
               | import_stmt
@@ -29,7 +33,13 @@ program: program_item*
 
     proc_header: (label tags? | tags) ":"
 
-    query: (label tags? | tags)? "make" multiset_expr using_clause?
+    query: (label tags? | tags)? "make" multiset_expr using_clause? supplier_clause? starting_clause? deadline_clause?
+    starting_clause: "starting" date_expr
+    deadline_clause: "by" date_expr
+    
+    ?date_expr: IDENTIFIER TIME -> date_full
+              | IDENTIFIER -> date_day
+              | TIME -> date_time
 
     ?multiset_expr: multiset
                     | "(" multiset ")"
@@ -49,6 +59,19 @@ program: program_item*
     label: IDENTIFIER
 
     tags: "[" tag ("," tag)* "]"
+
+    map_block: "map" "{" map_item* "}"
+    ?map_item: travel_edge ";"
+             | shopping_heuristic ";"
+    travel_edge: IDENTIFIER "<->" IDENTIFIER ":" NUMBER unit_or_curr
+    shopping_heuristic: "supplier" IDENTIFIER "[" "shopping_time" ":" shopping_time_expr "]"
+    
+    ?shopping_time_expr: NUMBER unit_or_curr "+" NUMBER unit_or_curr "/" "item" -> shopping_time_both
+                       | NUMBER unit_or_curr -> shopping_time_base
+                       | NUMBER unit_or_curr "/" "item" -> shopping_time_per_item
+
+    calendar_block: "calendar" "{" work_window* "}"
+    work_window: "work" IDENTIFIER? TIME "to" TIME ";"
 
     ?tag: min_goal
         | max_goal
@@ -75,8 +98,10 @@ program: program_item*
     CURRENCY_SYM: "€" | "$" | "£"
     
     IDENTIFIER: /[a-zA-Z][a-zA-Z0-9_]*/
+    TIME: /[0-9]{1,2}:[0-9]{2}/
 
     %import common.WS
     %import common.NUMBER
     %import common.ESCAPED_STRING
     %ignore WS
+    %ignore /--[^\n]*/

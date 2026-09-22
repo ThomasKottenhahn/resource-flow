@@ -1,7 +1,56 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef, ConvertStatement
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef, ConvertStatement, TravelEdge, ShoppingHeuristic, MapBlock, WorkWindow, CalendarBlock
 from dataclasses import dataclass, field
+import datetime
+
+class DateParseError(ValueError):
+    pass
+
+@dataclass
+class ParsedDate:
+    day_str: str | None
+    time_str: str | None
+
+    def resolve(self, anchor: datetime.datetime | None = None) -> datetime.datetime:
+        base_date = datetime.date(2024, 1, 1) # A deterministic Monday
+        
+        if anchor:
+            ref_date = anchor.date()
+        else:
+            ref_date = base_date
+            
+        if self.time_str:
+            hour, minute = map(int, self.time_str.split(":"))
+            target_time = datetime.time(hour=hour, minute=minute)
+        else:
+            target_time = datetime.time(hour=0, minute=0)
+            
+        if self.day_str:
+            days = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+            target_day = days.get(self.day_str.lower())
+            if target_day is None:
+                raise DateParseError(f"Invalid day of week: {self.day_str}")
+            
+            days_ahead = target_day - ref_date.weekday()
+            if days_ahead < 0:
+                days_ahead += 7
+            
+            target_date = ref_date + datetime.timedelta(days=days_ahead)
+            target_datetime = datetime.datetime.combine(target_date, target_time)
+            
+            # If computing deadline relative to anchor, it should be in the future
+            if anchor and target_datetime < anchor:
+                target_datetime += datetime.timedelta(days=7)
+            return target_datetime
+        else:
+            target_date = ref_date
+            target_datetime = datetime.datetime.combine(target_date, target_time)
+            
+            if anchor and target_datetime < anchor:
+                # Assume it means the next day
+                target_datetime += datetime.timedelta(days=1)
+            return target_datetime
 
 @dataclass
 class ModuleScope:
@@ -10,6 +59,8 @@ class ModuleScope:
     defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
     converts: list[ConvertStatement] = field(default_factory=list)
+    map_block: MapBlock = field(default_factory=MapBlock)
+    calendar_block: CalendarBlock = field(default_factory=CalendarBlock)
 
 @dataclass
 class ParseResult:
@@ -24,6 +75,8 @@ class ParseResult:
     reexported_macros: dict[str, set] = field(default_factory=dict)
     converts: list[ConvertStatement] = field(default_factory=list)
     reexported_converts: list[ConvertStatement] = field(default_factory=list)
+    map_block: MapBlock = field(default_factory=MapBlock)
+    calendar_block: CalendarBlock = field(default_factory=CalendarBlock)
 
 @dataclass(frozen=True)
 class MacroRef:
@@ -35,6 +88,8 @@ class ModuleExports:
     defs: list[BasicResourceDef] = field(default_factory=list)
     macros: dict[str, set] = field(default_factory=dict)
     converts: list[ConvertStatement] = field(default_factory=list)
+    map_block: MapBlock = field(default_factory=MapBlock)
+    calendar_block: CalendarBlock = field(default_factory=CalendarBlock)
 
 
 class RecipeTransformer(Transformer):
@@ -228,6 +283,81 @@ class RecipeTransformer(Transformer):
         """Parse a 'at supplier' clause."""
         return ("supplier", str(items[0]))
 
+    def map_block(self, items):
+        edges = []
+        heuristics = []
+        for item in items:
+            if isinstance(item, TravelEdge):
+                edges.append(item)
+            elif isinstance(item, ShoppingHeuristic):
+                heuristics.append(item)
+        return MapBlock(edges=edges, heuristics=heuristics)
+
+    def travel_edge(self, items):
+        loc_a = str(items[0])
+        loc_b = str(items[1])
+        val = float(items[2])
+        unit = str(items[3])
+        return TravelEdge(loc_a, loc_b, Quantity(val, unit))
+
+    def shopping_heuristic(self, items):
+        supplier = str(items[0])
+        base_time, per_item_time = items[1]
+        return ShoppingHeuristic(supplier, base_time, per_item_time)
+
+    def shopping_time_both(self, items):
+        base_val = float(items[0])
+        base_unit = str(items[1])
+        per_val = float(items[2])
+        per_unit = str(items[3])
+        return Quantity(base_val, base_unit), Quantity(per_val, per_unit)
+
+    def shopping_time_base(self, items):
+        base_val = float(items[0])
+        base_unit = str(items[1])
+        return Quantity(base_val, base_unit), Quantity(0, base_unit)
+
+    def shopping_time_per_item(self, items):
+        per_val = float(items[0])
+        per_unit = str(items[1])
+        return Quantity(0, per_unit), Quantity(per_val, per_unit)
+
+    def calendar_block(self, items):
+        windows = []
+        for item in items:
+            if isinstance(item, WorkWindow):
+                windows.append(item)
+        return CalendarBlock(windows=windows)
+
+    def work_window(self, items):
+        day = None
+        if len(items) == 3:
+            day = str(items[0])
+            start_str = str(items[1])
+            end_str = str(items[2])
+        else:
+            start_str = str(items[0])
+            end_str = str(items[1])
+        
+        start_time = datetime.datetime.strptime(start_str, "%H:%M")
+        end_time = datetime.datetime.strptime(end_str, "%H:%M")
+        return WorkWindow(start_time, end_time, day)
+
+    def date_full(self, items):
+        return ParsedDate(str(items[0]), str(items[1]))
+
+    def date_day(self, items):
+        return ParsedDate(str(items[0]), None)
+
+    def date_time(self, items):
+        return ParsedDate(None, str(items[0]))
+
+    def starting_clause(self, items):
+        return ("starting", items[0])
+
+    def deadline_clause(self, items):
+        return ("by", items[0])
+
     def transition(self, items):
         """Parse a process transition (inputs -> outputs)."""
         name = ""
@@ -308,6 +438,9 @@ class RecipeTransformer(Transformer):
         multiset = set()
         parsed_tags = []
         using = set()
+        location = None
+        start_time_parsed: ParsedDate | None = None
+        deadline_parsed: ParsedDate | None = None
         
         for item in items:
             if item is None:
@@ -319,6 +452,23 @@ class RecipeTransformer(Transformer):
                     using = item
                 else:
                     multiset = item
+            elif isinstance(item, tuple) and item[0] == "supplier":
+                location = item[1]
+            elif isinstance(item, tuple) and item[0] == "starting":
+                start_time_parsed = item[1]
+            elif isinstance(item, tuple) and item[0] == "by":
+                deadline_parsed = item[1]
+
+        if deadline_parsed is not None and start_time_parsed is None:
+            raise DateParseError("A starting point must be provided if a deadline is specified")
+            
+        start_time = None
+        if start_time_parsed is not None:
+            start_time = start_time_parsed.resolve(None)
+            
+        deadline = None
+        if deadline_parsed is not None:
+            deadline = deadline_parsed.resolve(start_time)
 
         # Ensure no non-basic resource has cost in the query
         for item in multiset:
@@ -355,7 +505,7 @@ class RecipeTransformer(Transformer):
                     unit_str = t[3] if len(t) > 3 else None
                     goals.append(RelationalGoal(key, "<=", val_num, unit_str))
 
-        return Query(multiset, goals=goals if goals else ("any",), tools=using)
+        return Query(multiset, goals=goals if goals else ("any",), tools=using, location=location, start_time=start_time, deadline=deadline)
 
 
     def def_stmt(self, items):
@@ -512,6 +662,8 @@ class RecipeParser:
             query=res.query,
             defs=res.defs + res.reexported_defs,
             converts=res.converts + res.reexported_converts,
+            map_block=res.map_block,
+            calendar_block=res.calendar_block,
         )
 
     def parse_string(self, content: str, file_path: str) -> ProgramContext:
@@ -523,6 +675,8 @@ class RecipeParser:
             query=res.query,
             defs=res.defs + res.reexported_defs,
             converts=res.converts + res.reexported_converts,
+            map_block=res.map_block,
+            calendar_block=res.calendar_block,
         )
 
     def _parse_file_internal(self, file_path: str, _cache: dict[str, ParseResult]) -> ParseResult:
@@ -597,6 +751,11 @@ class RecipeParser:
                 elif isinstance(item, ConvertStatement):
                     converts.append(item)
                     modules_map[mod_key].converts.append(item)
+                elif isinstance(item, MapBlock):
+                    modules_map[mod_key].map_block.edges.extend(item.edges)
+                    modules_map[mod_key].map_block.heuristics.extend(item.heuristics)
+                elif isinstance(item, CalendarBlock):
+                    modules_map[mod_key].calendar_block.windows.extend(item.windows)
         walk(items, [], file_inherited_tags, file_inherited_supplier)
         
         exported_by_module: dict[str, ModuleExports] = {}
@@ -623,6 +782,9 @@ class RecipeParser:
                 exports.defs.extend(modules_map[mod_key].defs)
                 exports.macros.update(modules_map[mod_key].macros)
                 exports.converts.extend(modules_map[mod_key].converts)
+                exports.map_block.edges.extend(modules_map[mod_key].map_block.edges)
+                exports.map_block.heuristics.extend(modules_map[mod_key].map_block.heuristics)
+                exports.calendar_block.windows.extend(modules_map[mod_key].calendar_block.windows)
                 
                 for imp in modules_map[mod_key].imports:
                     # 1. Try local module first if it's not explicitly a file (string literal)
@@ -731,6 +893,8 @@ class RecipeParser:
             reexported_macros=reexported_macros,
             converts=local_converts,
             reexported_converts=reexported_converts,
+            map_block=global_exports.map_block,
+            calendar_block=global_exports.calendar_block,
         )
         _cache[target_resolved] = res
         return res

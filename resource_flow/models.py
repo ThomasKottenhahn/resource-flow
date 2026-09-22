@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
+from datetime import datetime
 
 if TYPE_CHECKING:
     from .dag import DAG
@@ -437,8 +438,14 @@ class Query:
         query: set[tuple[Quantity, Resource]],
         goals: tuple[GoalType, ...] | list[GoalType] | None = None,
         tools: set["Tool"] | frozenset["Tool"] | None = None,
+        location: str | None = None,
+        start_time: datetime | None = None,
+        deadline: datetime | None = None,
     ) -> None:
         self.query = query
+        self.location = location
+        self.start_time = start_time
+        self.deadline = deadline
         self.tools = frozenset(tools) if tools else frozenset()
         normalized: list[Goal] = []
         if goals:
@@ -467,6 +474,12 @@ class Query:
         self.tools = self.tools | other.tools
         if other.goals != (AnyGoal(),):
             self.goals = other.goals
+        if getattr(other, "location", None) is not None:
+            self.location = other.location
+        if getattr(other, "start_time", None) is not None:
+            self.start_time = other.start_time
+        if getattr(other, "deadline", None) is not None:
+            self.deadline = other.deadline
 
     def calculate_missing_tools(self, processes: list["Process"]) -> dict[str, Quantity]:
         """Determine which tools required by the given processes are missing from this query's available tools."""
@@ -517,12 +530,45 @@ class ConvertStatement:
 
 
 @dataclass
+class TravelEdge:
+    loc_a: str
+    loc_b: str
+    time: Quantity
+
+@dataclass
+class ShoppingHeuristic:
+    supplier: str
+    base_time: Quantity
+    per_item_time: Quantity
+
+@dataclass
+class MapBlock:
+    edges: list[TravelEdge] = field(default_factory=list)
+    heuristics: list[ShoppingHeuristic] = field(default_factory=list)
+
+@dataclass
+class WorkWindow:
+    start_time: datetime
+    end_time: datetime
+    day_of_week: str | None = None
+
+@dataclass
+class CalendarBlock:
+    windows: list[WorkWindow] = field(default_factory=list)
+
+@dataclass
+class TimelineSchedule:
+    process_times: dict[str, tuple[datetime, datetime]]
+
+@dataclass
 class ProgramContext:
     resources: set[Resource]
     processes: set[Process]
     query: Query
     defs: list[BasicResourceDef]
     converts: list["ConvertStatement"] = field(default_factory=list)
+    map_block: MapBlock = field(default_factory=MapBlock)
+    calendar_block: CalendarBlock = field(default_factory=CalendarBlock)
 
     def __post_init__(self) -> None:
         self.normalize_currencies()
