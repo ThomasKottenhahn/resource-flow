@@ -1,7 +1,7 @@
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query
 from resource_flow.parser import RecipeParser
-from resource_flow.solvers import RecipeSolver
+from resource_flow.solvers import Solver
 
 
 def test_solver_goal_default_any():
@@ -32,7 +32,7 @@ def test_solver_goal_cheapest_selection():
     )
 
     query_cheapest = Query({(Quantity(1, "kg"), flour_mix)}, goals=["cheapest"])
-    solver_cheap = RecipeSolver({expensive_grind, cheap_grind}, query_cheapest)
+    solver_cheap = Solver({expensive_grind, cheap_grind}, query_cheapest)
     scales_cheap = solver_cheap.solve()
 
     assert "cheap_grind" in scales_cheap
@@ -63,7 +63,7 @@ def test_solver_goal_fastest_selection():
     )
 
     query_fastest = Query({(Quantity(1, "kg"), flour_mix)}, goals=["fastest"])
-    solver_fast = RecipeSolver({expensive_grind, cheap_grind}, query_fastest)
+    solver_fast = Solver({expensive_grind, cheap_grind}, query_fastest)
     scales_fast = solver_fast.solve()
 
     assert "expensive_grind" in scales_fast
@@ -93,7 +93,7 @@ def test_solver_goal_cascade_tie_breaking():
     )
 
     query = Query({(Quantity(1, "kg"), out)}, goals=["cheapest", "fastest"])
-    solver = RecipeSolver({proc_slow, proc_fast}, query)
+    solver = Solver({proc_slow, proc_fast}, query)
     scales = solver.solve()
 
     assert "proc_fast" in scales
@@ -122,7 +122,7 @@ def test_solver_goal_lexicographical_tie_breaking():
     )
 
     query = Query({(Quantity(1, "kg"), out)}, goals=["cheapest", "fastest"])
-    solver = RecipeSolver({proc_b, proc_a}, query)
+    solver = Solver({proc_b, proc_a}, query)
     scales = solver.solve()
 
     assert "proc_a" in scales
@@ -147,7 +147,7 @@ def test_solver_goal_multi_query_override(tmp_path):
     # Last query goal [fastest] overrides preceding [cheapest]
     assert query.goals == ("fastest",)
 
-    solver = RecipeSolver(processes, query)
+    solver = Solver(processes, query)
     scales = solver.solve()
     assert "proc_fast" in scales
 
@@ -166,7 +166,7 @@ def test_solver_goal_cycle_pruning_with_valid_alternative():
 
     query = Query({(Quantity(1, "g"), res_a)}, goals=["cheapest"])
 
-    solver = RecipeSolver({p1, p2, p3}, query)
+    solver = Solver({p1, p2, p3}, query)
     scales = solver.solve()
 
     assert "p3_valid" in scales
@@ -180,7 +180,7 @@ def test_solver_goal_extensibility():
     proc = Process("proc", {(Quantity(1, "kg"), res_a)}, {(Quantity(1, "kg"), res_out)}, cost=10.0, time=15.0)
 
     query = Query({(Quantity(1, "kg"), res_out)})
-    solver = RecipeSolver({proc}, query)
+    solver = Solver({proc}, query)
 
     dag = solver.solve()
 
@@ -209,7 +209,7 @@ def test_solver_goal_basic_vs_process_cost_comparison(tmp_path):
     ctx = parser.parse_file(str(recipe_file))
     _, processes, query = ctx.resources, ctx.processes, ctx.query
 
-    solver = RecipeSolver(processes, query)
+    solver = Solver(processes, query)
     scales = solver.solve()
     # Mixing batter costs ~5.75 total vs buying pre-made batter @ 15.64 total.
     # [cheapest] must select mix_batter!
@@ -229,11 +229,11 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solvers import RecipeSolver
+    from resource_flow.solvers import Solver
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(ctx)
+    solver = Solver(ctx)
     scales = solver.solve()
     
     # [min manual_labour] should prefer harvest_machine
@@ -251,7 +251,7 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     
     ctx = parser.parse_file(str(recipe_file_max))
     _, processes, query = ctx.resources, ctx.processes, ctx.query
-    solver = RecipeSolver(ctx)
+    solver = Solver(ctx)
     scales = solver.solve()
     
     # [max throughput] should also prefer harvest_machine
@@ -269,7 +269,7 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     
     ctx = parser.parse_file(str(recipe_file_min_co2))
     _, processes, query = ctx.resources, ctx.processes, ctx.query
-    solver = RecipeSolver(ctx)
+    solver = Solver(ctx)
     scales = solver.solve()
     
     # [min co2] should prefer harvest_manual
@@ -288,11 +288,11 @@ def test_solver_goal_relational_constraints(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solvers import RecipeSolver
+    from resource_flow.solvers import Solver
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(ctx)
+    solver = Solver(ctx)
     scales = solver.solve()
     
     # 2 h is 120 min, so harvest_manual fails the constraint.
@@ -312,12 +312,12 @@ def test_solver_goal_infeasible_closest_match(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solvers import RecipeSolver
+    from resource_flow.solvers import Solver
     import pytest
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(ctx)
+    solver = Solver(ctx)
     
     with pytest.raises(ValueError, match=r"No solution found for manual_labour == 0\.0\. Closest solution found: manual_labour = 1\.0"):
         solver.solve()
@@ -340,11 +340,11 @@ def test_basic_resource_custom_tag_scaling(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(f_grams))
     _, procs_g, q_g = ctx.resources, ctx.processes, ctx.query
-    dag_g = RecipeSolver(ctx).solve()
+    dag_g = Solver(ctx).solve()
 
     ctx = parser.parse_file(str(f_kg))
     _, procs_kg, q_kg = ctx.resources, ctx.processes, ctx.query
-    dag_kg = RecipeSolver(ctx).solve()
+    dag_kg = Solver(ctx).solve()
 
     assert dag_g.calculate_metric("co2") == dag_kg.calculate_metric("co2") == 200.0
 
@@ -361,7 +361,7 @@ def test_relational_goal_error_message_unit_formatting(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(f))
     _, procs, q = ctx.resources, ctx.processes, ctx.query
-    solver = RecipeSolver(ctx)
+    solver = Solver(ctx)
 
     with pytest.raises(ValueError, match=r"No solution found for time <= 45\.0 min\. Closest solution found: time = 60\.0"):
         solver.solve()

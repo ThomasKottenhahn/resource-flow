@@ -1,7 +1,7 @@
 """Verify that all .rf code examples embedded in docs/*.md files parse and solve successfully.
 
 Each ```text fenced code block that looks like .rf syntax is extracted, written to a temp file,
-parsed with RecipeParser, and — if it contains a make query — solved with RecipeSolver.
+parsed with RecipeParser, and — if it contains a make query — solved with Solver.
 Snippets using file imports (use "...") are skipped since they depend on external files.
 """
 
@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from resource_flow.parser import RecipeParser
-from resource_flow.solvers import RecipeSolver
+from resource_flow.solvers import Solver
 
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 
@@ -89,7 +89,7 @@ def test_doc_example_parses_and_solves(rel_path: str, line_no: int, code: str) -
 
         # If the snippet defines a query, also verify the solver runs
         if ctx.query.query:
-            solver = RecipeSolver(ctx)
+            solver = Solver(ctx)
             solver.solve()
     finally:
         Path(tmp_path).unlink(missing_ok=True)

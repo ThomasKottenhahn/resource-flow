@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 import sys
 from .parser import RecipeParser
-from .solvers import RecipeSolver
+from .solvers import Solver
 from .visualization import Visualizer
 
 
@@ -31,7 +31,7 @@ def main() -> None:
         recipe_parser = RecipeParser()
         ctx = recipe_parser.parse_file(args.input)
 
-        solver = RecipeSolver(ctx)
+        solver = Solver(ctx)
         dag = solver.solve()
         viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
         mermaid_text = viz.generate_mermaid(time_unit=args.time_unit)

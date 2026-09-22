@@ -3,39 +3,23 @@ from ...dag import DAG, DAGEdge, DAGNode
 from ...models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, ProgramContext, BasicResourceDef
 from typing import Any
 import math
-from ..base import Solver
+from ..interfaces import DAGSolver
 
-class RecipeSolver(Solver):
+class BasicRecipeSolver(DAGSolver):
     """Orchestrates the resolution of queries by searching topologies, scaling processes, and evaluating goals."""
     def __init__(
         self,
-        ctx: ProgramContext | set[Process] | None = None,
-        processes: set[Process] | Query | None = None,
-        query: Query | list[Resource] | None = None,
+        processes: set[Process],
+        query: Query,
         defs: list[Resource | BasicResourceDef] | None = None,
     ) -> None:
-        if isinstance(ctx, ProgramContext):
-            actual_processes = ctx.processes
-            actual_query = ctx.query
-            actual_defs = ctx.defs
-        elif ctx is not None:
-            # Called as RecipeSolver(processes, query)
-            actual_defs = query if isinstance(query, list) else defs
-            actual_query = processes
-            actual_processes = ctx
-        else:
-            actual_processes = set()
-            actual_query = Query(set())
-            actual_defs = defs
-
-        super().__init__(actual_processes, actual_query, actual_defs)
-        
+        super().__init__(processes, query, defs)
         filtered_processes = []
-        for p in actual_processes:
+        for p in self.processes:
             if p.has_required_tools(self.query.tools):
                 filtered_processes.append(p)
                 
-        self._all_processes = sorted(actual_processes, key=lambda p: p.name)
+        self._all_processes = sorted(self.processes, key=lambda p: p.name)
         self.processes = sorted(filtered_processes, key=lambda p: p.name)
         self.processes_in_dag: list[Process] = []
         self.basic_requirements: set[str] = set()
