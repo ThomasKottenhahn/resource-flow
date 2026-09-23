@@ -331,3 +331,123 @@ def test_impossible_hold_constraint():
     solver = Solver(ctx)
     with pytest.raises(InfeasibleScheduleError, match="hold constraint"):
         solver.solve()
+
+# ── Local Search Optimizer Tests ──────────────────────────────────────
+
+def test_local_search_minimize_travel_gaps():
+    # 2. Minimizing Travel Gaps: schedule with two separate trips to `Lidl` hours apart.
+    # Why: Verifies search mutates the timeline to group shopping trips.
+    res_a = Resource("A")
+    res_b = Resource("B")
+    
+    p_a = Process("p_a", inp=set(), out={(Quantity(1, "kg"), res_a)}, time=1.0, time_unit="h")
+    p_a.location = "Lidl"
+    
+    p_b = Process("p_b", inp=set(), out={(Quantity(1, "kg"), res_b)}, time=1.0, time_unit="h")
+    p_b.location = "Lidl"
+    
+    # Query A at 12:00, Query B at 18:00
+    q_a = Query({(Quantity(1, "kg"), res_a)}, location="Home", deadline=datetime(2023, 1, 1, 12, 0))
+    q_b = Query({(Quantity(1, "kg"), res_b)}, location="Home", deadline=datetime(2023, 1, 1, 18, 0))
+    
+    edge = TravelEdge("Home", "Lidl", time=Quantity(60, "min"))
+    map_block = MapBlock(edges=[edge], heuristics=[])
+    
+    ctx = _make_ctx([p_a, p_b], [q_a, q_b], map_block=map_block)
+    
+    solver = Solver(ctx)
+    schedule = solver.solve()
+    
+    start_a, end_a = schedule.process_times["p_a"]
+    start_b, end_b = schedule.process_times["p_b"]
+    
+    # Local search should group them together to minimize travel and idle time.
+    # Meaning they should be adjacent.
+    assert end_a == start_b or end_b == start_a or abs((start_b - end_a).total_seconds()) < 60 or abs((start_a - end_b).total_seconds()) < 60
+
+def test_local_search_valid_mutations():
+    # 3 & 4. Valid Swap and Shift Mutations: 
+    # Just running solve with random seeds should not throw exceptions on a loose schedule.
+    res = Resource("out")
+    p = Process("p1", inp=set(), out={(Quantity(1, "kg"), res)}, time=1.0, time_unit="h")
+    q = Query({(Quantity(1, "kg"), res)}, deadline=datetime(2023, 1, 1, 12, 0))
+    ctx = _make_ctx([p], [q])
+    
+    solver = Solver(ctx)
+    for _ in range(5): # run a few times to ensure randomness doesn't crash
+        schedule = solver.solve()
+        assert schedule is not None
+
+def test_local_search_score_improvement():
+    # 5. Score Improvement: Verify that the returned schedule has an equal or better score than the initial ALAP.
+    res_a = Resource("A")
+    res_b = Resource("B")
+    
+    p_a = Process("p_a", inp=set(), out={(Quantity(1, "kg"), res_a)}, time=1.0, time_unit="h")
+    p_a.location = "Lidl"
+    
+    p_b = Process("p_b", inp=set(), out={(Quantity(1, "kg"), res_b)}, time=1.0, time_unit="h")
+    p_b.location = "Lidl"
+    
+    q_a = Query({(Quantity(1, "kg"), res_a)}, location="Home", deadline=datetime(2023, 1, 1, 12, 0))
+    q_b = Query({(Quantity(1, "kg"), res_b)}, location="Home", deadline=datetime(2023, 1, 1, 18, 0))
+    
+    edge = TravelEdge("Home", "Lidl", time=Quantity(60, "min"))
+    map_block = MapBlock(edges=[edge], heuristics=[])
+    ctx = _make_ctx([p_a, p_b], [q_a, q_b], map_block=map_block)
+    
+    from resource_flow.solvers.timeline.basic_timeline_solver import BasicTimelineSolver
+    solver = Solver(ctx)
+    dag_solver = solver.dag_solver_class(solver.processes, solver.queries, solver.defs)
+    dag = dag_solver.solve()
+    tl_solver = BasicTimelineSolver(dag, solver.queries, ctx)
+    tl_solver._propagate_locations()
+    tasks_alap = tl_solver._schedule_alap()
+    
+    score_initial = tl_solver._evaluate_schedule(tasks_alap)
+    tasks_opt = tl_solver._optimize_local_search(tasks_alap)
+    score_opt = tl_solver._evaluate_schedule(tasks_opt)
+    
+    assert score_opt <= score_initial
+
+def test_local_search_fully_constrained():
+    # 9. Fully Constrained Schedule: Run on a schedule where zero valid mutations exist.
+    res = Resource("out")
+    p = Process("p1", inp=set(), out={(Quantity(1, "kg"), res)}, time=4.0, time_unit="h")
+    q = Query({(Quantity(1, "kg"), res)}, deadline=datetime(2023, 1, 1, 12, 0))
+    
+    # Calendar window is exactly 4 hours, meaning it can't shift at all.
+    win = WorkWindow(start_time=datetime.strptime("08:00", "%H:%M").time(), end_time=datetime.strptime("12:00", "%H:%M").time())
+    cal = CalendarBlock([win])
+    ctx = _make_ctx([p], [q], calendar_block=cal)
+    
+    solver = Solver(ctx)
+    schedule = solver.solve() # Should terminate gracefully
+    assert schedule is not None
+
+def test_local_search_reject_invalid_swaps():
+    # 6, 7, 8. Reject invalid hold, calendar, tool swaps.
+    # The local search should never violate constraints, meaning the final schedule is valid.
+    # Since `_is_valid_schedule` enforces this, if it returns a valid schedule, it succeeded.
+    # We create a tight tool lock constraint.
+    from resource_flow.models import Tool
+    knife = Tool("knife", Quantity(1, "piece"))
+    
+    res_a = Resource("A")
+    res_b = Resource("B")
+    
+    p_a = Process("p_a", inp=set(), out={(Quantity(1, "kg"), res_a)}, time=1.0, time_unit="h", tools={knife})
+    p_b = Process("p_b", inp=set(), out={(Quantity(1, "kg"), res_b)}, time=1.0, time_unit="h", tools={knife})
+    
+    q_a = Query({(Quantity(1, "kg"), res_a)}, deadline=datetime(2023, 1, 1, 12, 0), tools={knife})
+    q_b = Query({(Quantity(1, "kg"), res_b)}, deadline=datetime(2023, 1, 1, 12, 0), tools={knife})
+    
+    ctx = _make_ctx([p_a, p_b], [q_a, q_b])
+    solver = Solver(ctx)
+    schedule = solver.solve()
+    
+    start_a, end_a = schedule.process_times["p_a"]
+    start_b, end_b = schedule.process_times["p_b"]
+    
+    # Must not overlap
+    assert end_a <= start_b or end_b <= start_a

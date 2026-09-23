@@ -36,6 +36,9 @@ class BasicTimelineSolver(TimelineSolver):
         self._propagate_locations()
 
         tasks = self._schedule_alap()
+        
+        # Local Search Optimizer
+        tasks = self._optimize_local_search(tasks)
 
         process_times: dict[str, tuple[datetime, datetime]] = {}
         for task in tasks:
@@ -46,8 +49,6 @@ class BasicTimelineSolver(TimelineSolver):
         self._check_shelf_life(process_times)
 
         return TimelineSchedule(process_times=process_times, tasks=tasks, dag=self.dag)
-
-    # ── location propagation ────────────────────────────────────────────
 
     def _propagate_locations(self) -> None:
         """Assign locations to processes by walking the DAG backward from queries."""
@@ -473,3 +474,168 @@ class BasicTimelineSolver(TimelineSolver):
                         f"Shelf life violated for {res.name}: delay {delay_mins:.0f} min "
                         f"exceeds shelf_life {shelf_life_mins:.0f} min"
                     )
+
+    # ── local search optimizer ──────────────────────────────────────────
+
+    def _evaluate_schedule(self, tasks: list[ScheduledTask]) -> float:
+        """Score the schedule based on travel time and idle gaps between active tasks. Lower is better."""
+        sorted_tasks = sorted(tasks, key=lambda t: t.start_time)
+        score = 0.0
+        last_loc = None
+        last_end = None
+        for t in sorted_tasks:
+            if t.process.execution_type == ExecutionType.ACTIVE:
+                if last_loc is not None and t.location and last_loc != t.location:
+                    travel = self._calculate_travel_time(last_loc, t.location)
+                    score += travel.total_seconds() * 10.0  # Weight travel heavily
+                if last_end is not None and t.start_time > last_end:
+                    gap = (t.start_time - last_end).total_seconds()
+                    score += gap  # Penalty for idle time between active tasks
+                last_loc = t.location
+                last_end = max(last_end, t.end_time) if last_end else t.end_time
+        return score
+
+    def _is_valid_schedule(self, tasks: list[ScheduledTask], global_start: datetime) -> bool:
+        occupied_tools = {}
+        occupied_actor = []
+        process_times = {t.process.name: (t.start_time, t.end_time) for t in tasks}
+        for t in tasks:
+            if self._has_calendar() and t.process.execution_type != ExecutionType.UNSUPERVISED:
+                cal_end = self._find_calendar_slot(t.end_time - t.start_time, t.end_time)
+                if cal_end != t.end_time:
+                    return False
+            if t.process.execution_type == ExecutionType.ACTIVE:
+                for start, end in occupied_actor:
+                    if max(t.start_time, start) < min(t.end_time, end):
+                        return False
+                occupied_actor.append((t.start_time, t.end_time))
+            for tool in t.process.tools:
+                tool_occ = occupied_tools.setdefault(tool.name, [])
+                for start, end in tool_occ:
+                    if max(t.start_time, start) < min(t.end_time, end):
+                        return False
+                tool_occ.append((t.start_time, t.end_time))
+            if t.start_time < global_start:
+                return False
+
+        for edge in self.dag.edges:
+            src = self._edge_name(edge.source)
+            tgt = self._edge_name(edge.target)
+            if src in process_times and tgt in process_times:
+                producer_end = process_times[src][1]
+                consumer_start = process_times[tgt][0]
+                src_loc = self.process_locations.get(src, "")
+                tgt_loc = self.process_locations.get(tgt, "")
+                travel = self._calculate_travel_time(src_loc, tgt_loc)
+                if consumer_start < producer_end + travel:
+                    return False
+                res = edge.resource
+                if res and hasattr(res, "tags"):
+                    hold_tag = next((tag for tag in res.tags if "hold <=" in tag), None)
+                    if hold_tag:
+                        max_hold_mins = self._parse_duration_tag(hold_tag.split("<=")[1].strip())
+                        if (consumer_start - producer_end).total_seconds() / 60.0 > max_hold_mins:
+                            return False
+                    sl_tag = next((tag for tag in res.tags if tag.startswith("shelf_life:")), None)
+                    if sl_tag:
+                        sl_mins = self._parse_duration_tag(sl_tag.split(":", 1)[1].strip())
+                        if (consumer_start - producer_end).total_seconds() / 60.0 > sl_mins:
+                            return False
+
+        for q in self.queries:
+            for _qty, res in q.query:
+                for t in tasks:
+                    if any(r_out.name == res.name for _, r_out in t.process.out):
+                        if q.deadline:
+                            target_loc = getattr(q, "location", None) or ""
+                            travel = self._calculate_travel_time(t.location, target_loc)
+                            if t.end_time + travel > q.deadline:
+                                return False
+        return True
+
+    def _optimize_local_search(self, tasks: list[ScheduledTask]) -> list[ScheduledTask]:
+        import time, random, dataclasses
+        if not tasks:
+            return tasks
+
+        global_deadline = None
+        global_start = None
+        for q in self.queries:
+            if q.deadline:
+                if global_deadline is None or q.deadline < global_deadline:
+                    global_deadline = q.deadline
+            if getattr(q, 'start_time', None):
+                if global_start is None or q.start_time > global_start:
+                    global_start = q.start_time
+
+        if global_deadline is None:
+            global_deadline = datetime.now() + timedelta(days=7)
+        if global_start is None:
+            global_start = min(t.start_time for t in tasks)
+
+        best_tasks = tasks
+        best_score = self._evaluate_schedule(best_tasks)
+        no_improve = 0
+        start_time_limit = time.time()
+
+        for i in range(10000):
+            if time.time() - start_time_limit > 1.0:
+                break
+            if no_improve >= 100:
+                break
+
+            candidate = [dataclasses.replace(t) for t in best_tasks]
+            idx_a = random.randint(0, len(candidate) - 1)
+            t_a = candidate[idx_a]
+            dur_a = t_a.end_time - t_a.start_time
+
+            mutation_type = random.choice(["before", "after", "swap", "earliest", "latest"])
+            mutated_tasks = [t_a]
+
+            if mutation_type in ("before", "after", "swap"):
+                idx_b = random.randint(0, len(candidate) - 1)
+                t_b = candidate[idx_b]
+                dur_b = t_b.end_time - t_b.start_time
+
+                if mutation_type == "before":
+                    t_a.end_time = t_b.start_time
+                    t_a.start_time = t_a.end_time - dur_a
+                elif mutation_type == "after":
+                    t_a.start_time = t_b.end_time
+                    t_a.end_time = t_a.start_time + dur_a
+                elif mutation_type == "swap":
+                    start_a = t_a.start_time
+                    start_b = t_b.start_time
+                    t_a.start_time = start_b
+                    t_a.end_time = start_b + dur_a
+                    t_b.start_time = start_a
+                    t_b.end_time = start_a + dur_b
+                    mutated_tasks.append(t_b)
+            elif mutation_type == "earliest":
+                t_a.start_time = global_start
+                t_a.end_time = global_start + dur_a
+            elif mutation_type == "latest":
+                t_a.end_time = global_deadline
+                t_a.start_time = global_deadline - dur_a
+
+            if self._has_calendar():
+                for t in mutated_tasks:
+                    if t.process.execution_type != ExecutionType.UNSUPERVISED:
+                        dur = t.end_time - t.start_time
+                        cal_end = self._find_calendar_slot(dur, t.end_time)
+                        if cal_end:
+                            t.end_time = cal_end
+                            t.start_time = cal_end - dur
+
+            if self._is_valid_schedule(candidate, global_start):
+                score = self._evaluate_schedule(candidate)
+                if score < best_score:
+                    best_tasks = candidate
+                    best_score = score
+                    no_improve = 0
+                else:
+                    no_improve += 1
+            else:
+                no_improve += 1
+
+        return best_tasks

@@ -78,6 +78,7 @@ class Solver:
             self.basic_resources = dag_solver.basic_resources
         
         if self._needs_timeline(dag):
+            # pyrefly: ignore [bad-argument-type]
             timeline_solver = self.timeline_solver_class(dag, self.queries, self.ctx)
             return timeline_solver.solve()
             
