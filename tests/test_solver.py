@@ -1,3 +1,5 @@
+from resource_flow.dag import DAG
+from typing import cast
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query
 from resource_flow.solvers import BasicRecipeSolver
@@ -195,9 +197,9 @@ def test_solver_tagged_recipe_end_to_end(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
 
-    solver = BasicRecipeSolver(processes, query)
+    solver = BasicRecipeSolver(processes, queries)
     scales = solver.solve()
 
     assert scales["cook"] == 2.0
@@ -260,9 +262,9 @@ def test_solver_batch_cost_unit_conversion(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
 
-    solver = BasicRecipeSolver(processes, query)
+    solver = BasicRecipeSolver(processes, queries)
     dag = solver.solve()
 
     assert dag["peel"] == 6.0
@@ -409,12 +411,12 @@ def test_solver_tagged_resource_and_multi_query_graph_edges(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    processes, query = ctx.processes, ctx.query
+    processes, queries = ctx.processes, ctx.queries
 
-    solver = BasicRecipeSolver(processes, query)
+    solver = BasicRecipeSolver(processes, queries)
     dag = solver.solve()
     from resource_flow.visualization import Visualizer
-    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, queries)
     mermaid_str = viz.generate_mermaid()
 
     # Edge from plain onions to cut_onions
@@ -447,8 +449,8 @@ def test_basic_resource_cost_isolation(tmp_path):
     from resource_flow.parser import RecipeParser
     parser = RecipeParser()
     ctx = parser.parse_file(str(f))
-    procs, q = ctx.processes, ctx.query
-    solver = BasicRecipeSolver(procs, q)
+    procs, queries = ctx.processes, ctx.queries
+    solver = BasicRecipeSolver(procs, queries)
     dag = solver.solve()
 
     assert dag.calculate_metric("cost") == 2.0

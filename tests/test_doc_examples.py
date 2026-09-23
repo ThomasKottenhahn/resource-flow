@@ -85,10 +85,10 @@ def test_doc_example_parses_and_solves(rel_path: str, line_no: int, code: str) -
 
     try:
         ctx = parser.parse_file(tmp_path)
-        _resources, processes, query = ctx.resources, ctx.processes, ctx.query
+        _resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
 
         # If the snippet defines a query, also verify the solver runs
-        if ctx.query.query:
+        if ctx.queries and any(q.query for q in ctx.queries):
             solver = Solver(ctx)
             solver.solve()
     finally:

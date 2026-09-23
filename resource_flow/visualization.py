@@ -15,13 +15,16 @@ class Visualizer:
         demands: dict[str, Quantity],
         surplus: dict[str, Quantity],
         basic_resources: dict[str, list[Resource]],
-        query: Query,
+        queries: "list[Query] | Query | None" = None,
     ) -> None:
         self.dag = dag
         self.demands = demands
         self.surplus = surplus
         self.basic_resources = basic_resources
-        self.query = query
+        if isinstance(queries, Query):
+            self.queries = [queries]
+        else:
+            self.queries = queries or []
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -227,9 +230,10 @@ class Visualizer:
                 lines.append(f'    {supplier_id} --> basic_{name}')
 
         query_targets = []
-        for qty, res in sorted(self.query.query, key=lambda item: item[1].name):
-            res_tags_str = self._format_resource_tags(res)
-            query_targets.append(f"{qty.val:.2f} {qty.unit} {res.name}{res_tags_str}")
+        for q in self.queries:
+            for qty, res in sorted(q.query, key=lambda item: item[1].name):
+                res_tags_str = self._format_resource_tags(res)
+                query_targets.append(f"{qty.val:.2f} {qty.unit} {res.name}{res_tags_str}")
         lines.append(f'    Query["Query: {", ".join(query_targets)}"]')
 
         for proc in processes:
@@ -248,17 +252,18 @@ class Visualizer:
                     )
 
             for qty_out, res_out in proc.out:
-                if any(
-                    res_out.name == q_res.name and self._matches_tags(q_res, res_out)
-                    for _, q_res in self.query.query
-                ):
+                if any(res_out.name == q_res.name and self._matches_tags(q_res, res_out) for q in self.queries for _, q_res in q.query):
                     scaled_qty = qty_out * scale
                     res_tags_str = self._format_resource_tags(res_out)
                     lines.append(
                         f'    {proc.name} -->|"{scaled_qty.val:.2f} {scaled_qty.unit} {res_out.name}{res_tags_str}"| Query'
                     )
 
-        for q_qty, q_res in sorted(self.query.query, key=lambda item: item[1].name):
+        all_query_items: list = []
+        for q in self.queries:
+            all_query_items.extend(q.query)
+            
+        for q_qty, q_res in sorted(all_query_items, key=lambda item: item[1].name):
             source = self._find_source_process(q_res, "Query")  # no consumer for query targets
             if q_res.basic or source is None:
                 # check if any process in dag produces this
@@ -283,5 +288,35 @@ class Visualizer:
         )
         lines.append(f'    Metrics["{metrics_label}"]')
 
+        lines.append("```")
+        return "\n".join(lines)
+
+    def generate_gantt(self, timeline, time_unit: str = "min") -> str:
+        """Generate a Mermaid Gantt chart for a given TimelineSchedule."""
+        lines = ["```mermaid", "gantt", "    title Resource Flow Schedule", "    dateFormat YYYY-MM-DD HH:mm"]
+        lines.append("    axisFormat %H:%M")
+        
+        # Group tasks by location/actor
+        # Since actors aren't explicit, we can group by location
+        location_tasks: dict = {}
+        for task in timeline.tasks:
+            loc = getattr(task, "location", "Unknown")
+            if loc not in location_tasks:
+                location_tasks[loc] = []
+            location_tasks[loc].append(task)
+            
+        for loc, tasks in location_tasks.items():
+            lines.append(f"    section {loc}")
+            for task in tasks:
+                name = getattr(task, "name", None)
+                if not name and hasattr(task, "process"):
+                    name = task.process.name
+                
+                # Format start and end times for mermaid
+                start_str = task.start_time.strftime("%Y-%m-%d %H:%M")
+                end_str = task.end_time.strftime("%Y-%m-%d %H:%M")
+                
+                lines.append(f"    {name} : {start_str}, {end_str}")
+                
         lines.append("```")
         return "\n".join(lines)

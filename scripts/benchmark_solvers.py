@@ -42,10 +42,13 @@ def run_benchmarks(data_dir: Path):
             try:
                 parser = RecipeParser()
                 ctx = parser.parse_file(str(rf_file))
-                processes, query = ctx.processes, ctx.query
+                processes, queries = ctx.processes, ctx.queries
+                q_g = queries[0]
+                q = queries[0]
+                query = queries[0]
                 
                 start_time = time.perf_counter()
-                solver_instance = solver_cls(processes, query)
+                solver_instance = solver_cls(processes, queries)
                 solver_instance.solve()
                 end_time = time.perf_counter()
                 

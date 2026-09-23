@@ -14,7 +14,10 @@ def test_parser_with_simple_recipe(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     # Verify processes
     assert len(processes) == 2
@@ -56,7 +59,10 @@ def test_parser_with_tags_and_metrics(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     proc = list(processes)[0]
     assert proc.name == "cut_carrots"
@@ -85,7 +91,10 @@ def test_parser_basic_as_tag(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     proc = list(processes)[0]
     q_in, r_in = list(proc.inp)[0]
@@ -118,7 +127,10 @@ def test_parser_multiple_positive_and_negated_tags(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     proc = list(processes)[0]
     assert proc.name == "prep"
@@ -150,7 +162,10 @@ def test_batch_cost_normalization_parsing(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     proc = list(processes)[0]
     q_in, r_in = list(proc.inp)[0]
@@ -183,7 +198,10 @@ def test_parse_general_goals(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    query = ctx.query
+    queries = ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     assert query.goals == (
         AggregateGoal("min", "manual_labour"),
@@ -205,7 +223,10 @@ def test_parser_tools(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     assert len(processes) == 1
     proc = list(processes)[0]
@@ -236,7 +257,10 @@ def test_module_processes_not_in_scope(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
     
     # process inside module should not be in the returned set
     assert len(processes) == 1
@@ -257,7 +281,10 @@ def test_module_processes_with_import_all(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
     
     assert len(processes) == 2
     process_names = {p.name for p in processes}
@@ -282,7 +309,10 @@ def test_module_processes_with_import_specific(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
     
     assert list(processes)[0].name == "prep::peel"
 

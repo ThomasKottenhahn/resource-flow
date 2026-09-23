@@ -1,6 +1,6 @@
 from pathlib import Path
 from lark import Lark, Transformer
-from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef, ConvertStatement, TravelEdge, ShoppingHeuristic, MapBlock, WorkWindow, CalendarBlock
+from .models import AggregateGoal, Process, Query, Quantity, RelationalGoal, Resource, Tool, Module, Import, ProgramContext, BasicResourceDef, MacroDef, ConvertStatement, TravelEdge, ShoppingHeuristic, MapBlock, WorkWindow, CalendarBlock, ExecutionType
 from dataclasses import dataclass, field
 import datetime
 
@@ -66,7 +66,7 @@ class ModuleScope:
 class ParseResult:
     resources: set[Resource] = field(default_factory=set)
     global_processes: set[Process] = field(default_factory=set)
-    query: Query = field(default_factory=lambda: Query(set()))
+    queries: list[Query] = field(default_factory=list)
     owned_processes: list[Process] = field(default_factory=list)
     reexported_processes: list[Process] = field(default_factory=list)
     defs: list[BasicResourceDef] = field(default_factory=list)
@@ -77,6 +77,12 @@ class ParseResult:
     reexported_converts: list[ConvertStatement] = field(default_factory=list)
     map_block: MapBlock = field(default_factory=MapBlock)
     calendar_block: CalendarBlock = field(default_factory=CalendarBlock)
+
+    @property
+    def query(self) -> Query:
+        if not self.queries:
+            return Query(set())
+        return self.queries[0]
 
 @dataclass(frozen=True)
 class MacroRef:
@@ -389,12 +395,18 @@ class RecipeTransformer(Transformer):
         cost_currency = None
         proc_time = 0.0
         time_unit = "min"
+        execution_type = None
 
         if parsed_tags:
             for t in parsed_tags:
                 tag_type = t[0]
                 if tag_type == "flag":
-                    proc_tags.add(t[1])
+                    if t[1] == "passive":
+                        execution_type = ExecutionType.PASSIVE
+                    elif t[1] == "unsupervised":
+                        execution_type = ExecutionType.UNSUPERVISED
+                    else:
+                        proc_tags.add(t[1])
                 elif tag_type == "negated":
                     proc_tags.add(f"!{t[1]}")
                 elif tag_type == "kv":
@@ -431,6 +443,7 @@ class RecipeTransformer(Transformer):
             tags=proc_tags,
             tools=tools,
             cost_currency=cost_currency,
+            execution_type=execution_type,
         )
 
     def query(self, items):
@@ -637,7 +650,7 @@ class RecipeParser:
         return items, set(), None
 
     @staticmethod
-    def _expand_multiset(mset: set, available_macros: dict, visited_macros: list = None) -> set:
+    def _expand_multiset(mset: set, available_macros: dict, visited_macros: list | None = None) -> set:
         if visited_macros is None:
             visited_macros = []
         expanded = set()
@@ -659,7 +672,7 @@ class RecipeParser:
         return ProgramContext(
             resources=res.resources,
             processes=res.global_processes,
-            query=res.query,
+            queries=res.queries,
             defs=res.defs + res.reexported_defs,
             converts=res.converts + res.reexported_converts,
             map_block=res.map_block,
@@ -672,7 +685,7 @@ class RecipeParser:
         return ProgramContext(
             resources=res.resources,
             processes=res.global_processes,
-            query=res.query,
+            queries=res.queries,
             defs=res.defs + res.reexported_defs,
             converts=res.converts + res.reexported_converts,
             map_block=res.map_block,
@@ -688,7 +701,7 @@ class RecipeParser:
         if target_resolved in _cache:
             cached = _cache[target_resolved]
             return ParseResult(
-                query=Query(set()),
+                queries=[],
                 owned_processes=cached.owned_processes,
                 reexported_processes=cached.reexported_processes
             )
@@ -710,7 +723,7 @@ class RecipeParser:
         # Map module paths to their direct contents
         modules_map: dict[str, ModuleScope] = {}
         
-        def walk(item_list, current_path: list[str], inherited_tags: set = None, inherited_supplier: str = None):
+        def walk(item_list, current_path: list[str], inherited_tags: set | None = None, inherited_supplier: str | None = None):
             if inherited_tags is None: inherited_tags = set()
             mod_key = "::".join(current_path)
             if mod_key not in modules_map:
@@ -820,7 +833,7 @@ class RecipeParser:
                             self._parse_file_internal(str(target_path), _cache)
                         
                         target_res = _cache[target_resolved_path]
-                        queries.append(target_res.query)
+                        queries.extend(target_res.queries)
                         
                         if imp.is_file:
                             prefix = Path(imp.module_name).stem
@@ -861,10 +874,10 @@ class RecipeParser:
             p.inp = self._expand_multiset(p.inp, all_macros)
             p.out = self._expand_multiset(p.out, all_macros)
 
-        combined_query = Query(set())
+        expanded_queries = []
         for q in queries:
             q.query = self._expand_multiset(q.query, all_macros)
-            combined_query.add(q)
+            expanded_queries.append(q)
             
         resources: set[Resource] = set()
         for p in global_exports.processes:
@@ -872,7 +885,8 @@ class RecipeParser:
             resources.update(r for _, r in p.out)
         for d in global_exports.defs:
             resources.add(d.resource)
-        resources.update(r for _, r in combined_query.query)
+        for q in expanded_queries:
+            resources.update(r for _, r in q.query)
             
         reexported_defs = list(set(global_exports.defs) - set(defs))
         local_macros = modules_map[""].macros if "" in modules_map else {}
@@ -884,7 +898,7 @@ class RecipeParser:
         res = ParseResult(
             resources=resources,
             global_processes=global_exports.processes,
-            query=combined_query,
+            queries=expanded_queries,
             owned_processes=all_owned_processes,
             reexported_processes=all_reexported_processes,
             defs=defs,

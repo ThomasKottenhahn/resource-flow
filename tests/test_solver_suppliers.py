@@ -1,3 +1,4 @@
+from resource_flow.models import Resource, BasicResourceDef
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query, BasicResourceDef, AggregateGoal
 from resource_flow.solvers import BasicRecipeSolver
@@ -60,7 +61,7 @@ def test_solver_chooses_supplier_from_parser(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = BasicRecipeSolver(ctx.processes, ctx.query, ctx.defs)
+    solver = BasicRecipeSolver(ctx.processes, ctx.queries, ctx.defs)
     dag = solver.solve()
     
     # Cost should be 5.00 from the Cheap Farm
@@ -90,7 +91,7 @@ def test_solver_chooses_inline_supplier_cost(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = BasicRecipeSolver(ctx.processes, ctx.query, ctx.defs)
+    solver = BasicRecipeSolver(ctx.processes, ctx.queries, ctx.defs)
     dag = solver.solve()
     
     # Cost should be 2.00 from the inline definition

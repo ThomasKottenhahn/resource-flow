@@ -11,12 +11,12 @@ def parser():
 def test_comment_at_start(parser):
     code = "-- This is a comment\nmake 1 cake;"
     ctx = parser.parse_string(code, "test.rf")
-    assert len(ctx.query.query) == 1
+    assert len(ctx.queries[0].query) == 1
 
 def test_comment_after_code(parser):
     code = "make 1 cake; -- This is another comment"
     ctx = parser.parse_string(code, "test.rf")
-    assert len(ctx.query.query) == 1
+    assert len(ctx.queries[0].query) == 1
 
 def test_map_block(parser):
     code = '''
@@ -73,11 +73,11 @@ def test_calendar_block(parser):
 def test_make_starting_only(parser):
     code = "make 1 cake starting Monday 08:00;"
     ctx = parser.parse_string(code, "test.rf")
-    assert ctx.query.start_time is not None
-    assert ctx.query.start_time.year == 2024
-    assert ctx.query.start_time.month == 1
-    assert ctx.query.start_time.day == 1 # 2024-01-01 is a Monday
-    assert ctx.query.start_time.hour == 8
+    assert ctx.queries[0].start_time is not None
+    assert ctx.queries[0].start_time.year == 2024
+    assert ctx.queries[0].start_time.month == 1
+    assert ctx.queries[0].start_time.day == 1 # 2024-01-01 is a Monday
+    assert ctx.queries[0].start_time.hour == 8
 
 def test_make_by_only(parser):
     code = "make 1 cake by 18:00;"
@@ -89,37 +89,37 @@ def test_make_by_only(parser):
 def test_make_at_starting_by(parser):
     code = "make 1 cake at Home starting Monday 08:00 by 18:00;"
     ctx = parser.parse_string(code, "test.rf")
-    assert ctx.query.location == "Home"
-    assert ctx.query.start_time is not None
-    assert ctx.query.start_time.day == 1
-    assert ctx.query.start_time.hour == 8
-    assert ctx.query.deadline is not None
-    assert ctx.query.deadline.day == 1
-    assert ctx.query.deadline.hour == 18
+    assert ctx.queries[0].location == "Home"
+    assert ctx.queries[0].start_time is not None
+    assert ctx.queries[0].start_time.day == 1
+    assert ctx.queries[0].start_time.hour == 8
+    assert ctx.queries[0].deadline is not None
+    assert ctx.queries[0].deadline.day == 1
+    assert ctx.queries[0].deadline.hour == 18
 
 def test_smart_date_inference_weekday(parser):
     code = "make 1 cake starting Monday 08:00 by Tuesday 18:00;"
     ctx = parser.parse_string(code, "test.rf")
-    assert ctx.query.deadline.day == 2 # Tuesday is the next day
-    assert ctx.query.deadline.hour == 18
+    assert ctx.queries[0].deadline.day == 2 # Tuesday is the next day
+    assert ctx.queries[0].deadline.hour == 18
 
 def test_smart_date_inference_today(parser):
     # Test that when a starting point has no day, it uses the base day, and deadline uses same day
     code = "make 1 cake starting 08:00 by 18:00;"
     ctx = parser.parse_string(code, "test.rf")
-    assert ctx.query.start_time.day == 1
-    assert ctx.query.start_time.hour == 8
-    assert ctx.query.deadline.day == 1
-    assert ctx.query.deadline.hour == 18
+    assert ctx.queries[0].start_time.day == 1
+    assert ctx.queries[0].start_time.hour == 8
+    assert ctx.queries[0].deadline.day == 1
+    assert ctx.queries[0].deadline.hour == 18
 
 def test_smart_date_inference_tomorrow(parser):
     # Test that when deadline time is before start time, it rolls over to next day
     code = "make 1 cake starting Monday 18:00 by 08:00;"
     ctx = parser.parse_string(code, "test.rf")
-    assert ctx.query.start_time.day == 1
-    assert ctx.query.start_time.hour == 18
-    assert ctx.query.deadline.day == 2
-    assert ctx.query.deadline.hour == 8
+    assert ctx.queries[0].start_time.day == 1
+    assert ctx.queries[0].start_time.hour == 18
+    assert ctx.queries[0].deadline.day == 2
+    assert ctx.queries[0].deadline.hour == 8
 
 def test_invalid_date_format(parser):
     code = "make 1 cake by NotADate;"

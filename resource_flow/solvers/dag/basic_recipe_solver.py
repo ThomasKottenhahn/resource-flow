@@ -10,13 +10,19 @@ class BasicRecipeSolver(DAGSolver):
     def __init__(
         self,
         processes: set[Process],
-        query: Query,
+        queries: list[Query] | Query,
         defs: list[Resource | BasicResourceDef] | None = None,
     ) -> None:
-        super().__init__(processes, query, defs)
+        super().__init__(processes, queries, defs)
+        
+        # Merge tools from all queries to check if processes are valid
+        all_query_tools: set = set()
+        for q in self.queries:
+            all_query_tools.update(q.tools)
+            
         filtered_processes = []
         for p in self.processes:
-            if p.has_required_tools(self.query.tools):
+            if p.has_required_tools(all_query_tools):
                 filtered_processes.append(p)
                 
         self._all_processes = sorted(self.processes, key=lambda p: p.name)
@@ -57,10 +63,11 @@ class BasicRecipeSolver(DAGSolver):
                 if r.basic:
                     basics.add(r.name)
                     self._add_basic(r)
-        for _, r in self.query.query:
-            if r.basic:
-                basics.add(r.name)
-                self._add_basic(r)
+        for q in self.queries:
+            for _, r in q.query:
+                if r.basic:
+                    basics.add(r.name)
+                    self._add_basic(r)
         return basics
 
     def is_basic(self, resource_name: str) -> bool:
@@ -68,7 +75,7 @@ class BasicRecipeSolver(DAGSolver):
         return resource_name in self.basic_resource_names
 
     def _matches_tags(self, required: Resource, provided: Resource) -> bool:
-        """Check if a provided resource satisfies the required resource\'s tags."""
+        """Check if a provided resource satisfies the required resource's tags."""
         req_tags = required.tags - {"basic"}
         prov_tags = provided.tags - {"basic"}
         if not req_tags.issubset(prov_tags):
@@ -254,7 +261,7 @@ class BasicRecipeSolver(DAGSolver):
                     chosen_proc_names.remove(proc.name)
                     chosen_procs.pop()
 
-        initial_needed: list[tuple[Process | None, Resource]] = [(None, res) for _, res in self.query.query]
+        initial_needed: list[tuple[Process | None, Resource]] = [(None, res) for q in self.queries for _, res in q.query]
         search(initial_needed, [], set(), set(), {})
 
         valid_topologies = []
@@ -315,7 +322,8 @@ class BasicRecipeSolver(DAGSolver):
             for qty_out, res_out in proc.out:
                 if any(
                     res_out.name == q_res.name and self._matches_tags(q_res, res_out)
-                    for _, q_res in self.query.query
+                    for q in self.queries
+                    for _, q_res in q.query
                 ):
                     scaled_qty = qty_out * scale
                     edges.append(DAGEdge(
@@ -330,11 +338,12 @@ class BasicRecipeSolver(DAGSolver):
     def _scale_topology(self, processes: list[Process], basic_reqs: dict[str, Resource]) -> tuple[DAG, dict[str, float], dict[str, Quantity], dict[str, Quantity]]:
         """Calculate scale factors for all processes in the topology and construct its fully scaled DAG."""
         demands: dict[str, Quantity] = {}
-        for qty, res in self.query.query:
-            if res.name in demands:
-                demands[res.name] += qty
-            else:
-                demands[res.name] = qty
+        for q in self.queries:
+            for qty, res in q.query:
+                if res.name in demands:
+                    demands[res.name] += qty
+                else:
+                    demands[res.name] = qty
 
         surplus: dict[str, Quantity] = {}
         process_scales: dict[str, float] = {}
@@ -484,7 +493,11 @@ class BasicRecipeSolver(DAGSolver):
                 valid_missing = []
                 for cand in p2_valid:
                     procs = cand["processes"]
-                    missing_tools = self.query.calculate_missing_tools(procs)
+                    missing_tools = {}
+                    for q in self.queries:
+                        missing = q.calculate_missing_tools(procs)
+                        for t_name, t_qty in missing.items():
+                            missing_tools[t_name] = t_qty
                     valid_missing.append((missing_tools, procs))
                 
                 valid_missing.sort(key=lambda item: len(item[0]))
@@ -509,8 +522,8 @@ class BasicRecipeSolver(DAGSolver):
             dag, scales, demands, surplus = self._scale_topology(procs, basic_reqs)
             scaled_candidates.append((dag, procs, basic_reqs, scales, demands, surplus))
 
-        relational_goals = [g for g in self.query.goals if isinstance(g, RelationalGoal)]
-        aggregate_goals = [g for g in self.query.goals if not isinstance(g, RelationalGoal)]
+        relational_goals = [g for q in self.queries for g in q.goals if isinstance(g, RelationalGoal)]
+        aggregate_goals = [g for q in self.queries for g in q.goals if not isinstance(g, RelationalGoal)]
 
         valid_candidates, closest_info = self._evaluate_dags(scaled_candidates, relational_goals, aggregate_goals)
 

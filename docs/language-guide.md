@@ -160,7 +160,7 @@ auto_quench [cost: 15.00, time: 30 min]:
     -> 1 piece steel_sword;
 
 [min manual_labour, fastest] make 1 piece steel_sword;
-[time <= 2 h] make 1 piece steel_sword;
+[time <= 4 h] make 1 piece steel_sword;
 ```
 
 The solver evaluates goals left to right:
