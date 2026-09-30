@@ -1,9 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .dag import DAG
-
+from datetime import datetime
+from enum import Enum, auto
 
 class Resource:
     """Represents a tangible resource, either required or produced in the system."""
@@ -184,6 +182,12 @@ class Tool:
         return hash((self.name, self.quantity))
 
 
+class ExecutionType(Enum):
+    ACTIVE = auto()
+    PASSIVE = auto()
+    UNSUPERVISED = auto()
+
+
 class Process:
     """Represents a production process transforming input resources into output resources."""
     def __init__(
@@ -198,6 +202,8 @@ class Process:
         tools: set["Tool"] | frozenset["Tool"] | None = None,
         fully_qualified_label: str | None = None,
         cost_currency: str | None = None,
+        location: str | None = None,
+        execution_type: ExecutionType | None = None,
     ) -> None:
         self.original_label = original_label
         self.fully_qualified_label = fully_qualified_label or original_label
@@ -210,6 +216,8 @@ class Process:
         self.tags = frozenset(tags) if tags else frozenset()
         self.tools = frozenset(tools) if tools else frozenset()
         self.cost_currency = cost_currency
+        self.location = location
+        self.execution_type = execution_type or ExecutionType.ACTIVE
 
     def __repr__(self) -> str:
         tag_strs = [t for t in sorted(self.tags)]
@@ -437,8 +445,14 @@ class Query:
         query: set[tuple[Quantity, Resource]],
         goals: tuple[GoalType, ...] | list[GoalType] | None = None,
         tools: set["Tool"] | frozenset["Tool"] | None = None,
+        location: str | None = None,
+        start_time: datetime | None = None,
+        deadline: datetime | None = None,
     ) -> None:
         self.query = query
+        self.location = location
+        self.start_time = start_time
+        self.deadline = deadline
         self.tools = frozenset(tools) if tools else frozenset()
         normalized: list[Goal] = []
         if goals:
@@ -460,13 +474,6 @@ class Query:
     def __repr__(self) -> str:
         goal_str = f" [{', '.join(str(g) for g in self.goals)}]" if self.goals != (AnyGoal(),) else ""
         return f"Query{goal_str} for: {self.query}"
-
-    def add(self, other: "Query") -> None:
-        """Merge another query's requirements and tools into this one."""
-        self.query = self.query | other.query
-        self.tools = self.tools | other.tools
-        if other.goals != (AnyGoal(),):
-            self.goals = other.goals
 
     def calculate_missing_tools(self, processes: list["Process"]) -> dict[str, Quantity]:
         """Determine which tools required by the given processes are missing from this query's available tools."""
@@ -517,12 +524,51 @@ class ConvertStatement:
 
 
 @dataclass
+class TravelEdge:
+    loc_a: str
+    loc_b: str
+    time: Quantity
+
+@dataclass
+class ShoppingHeuristic:
+    supplier: str
+    base_time: Quantity
+    per_item_time: Quantity
+
+@dataclass
+class MapBlock:
+    edges: list[TravelEdge] = field(default_factory=list)
+    heuristics: list[ShoppingHeuristic] = field(default_factory=list)
+
+@dataclass
+class WorkWindow:
+    start_time: datetime
+    end_time: datetime
+    day_of_week: str | None = None
+
+@dataclass
+class CalendarBlock:
+    windows: list[WorkWindow] = field(default_factory=list)
+
+@dataclass
+class TimelineSchedule:
+    process_times: dict[str, tuple[datetime, datetime]]
+    tasks: list[Any] = field(default_factory=list)
+    dag: Any = None
+
+@dataclass
 class ProgramContext:
     resources: set[Resource]
     processes: set[Process]
-    query: Query
+    queries: list[Query]
     defs: list[BasicResourceDef]
     converts: list["ConvertStatement"] = field(default_factory=list)
+    map_block: MapBlock = field(default_factory=MapBlock)
+
+    @property
+    def query(self) -> Query:
+        raise DeprecationWarning("query property is deprecated. Use queries instead.")
+    calendar_block: CalendarBlock = field(default_factory=CalendarBlock)
 
     def __post_init__(self) -> None:
         self.normalize_currencies()

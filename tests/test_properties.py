@@ -1,7 +1,7 @@
 import pytest
 from hypothesis import given, strategies as st
 from resource_flow.models import Resource, Quantity, Process, Query
-from resource_flow.solvers import RecipeSolver
+from resource_flow.solvers import BasicRecipeSolver
 
 @st.composite
 def quantities(draw):
@@ -62,7 +62,7 @@ def solvable_recipe(draw):
 def test_solver_no_negative_surplus(recipe_data):
     """Property test asserting that if a solution is found, the final surplus is never negative."""
     processes, query = recipe_data
-    solver = RecipeSolver(processes, query)
+    solver = BasicRecipeSolver(processes, [query])
     try:
         solver.build_dag()
         solver.solve()
@@ -79,7 +79,7 @@ def test_solver_no_negative_surplus(recipe_data):
 def test_solver_meets_all_query_goals(recipe_data):
     """Property test asserting that all query goals are met if a solution is found."""
     processes, query = recipe_data
-    solver = RecipeSolver(processes, query)
+    solver = BasicRecipeSolver(processes, [query])
     try:
         dag = solver.solve()
     except ValueError:

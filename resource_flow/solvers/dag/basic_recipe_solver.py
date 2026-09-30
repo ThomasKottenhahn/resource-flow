@@ -3,39 +3,29 @@ from ...dag import DAG, DAGEdge, DAGNode
 from ...models import AggregateGoal, AnyGoal, Process, Query, Quantity, RelationalGoal, Resource, ProgramContext, BasicResourceDef
 from typing import Any
 import math
-from ..base import Solver
+from ..interfaces import DAGSolver
 
-class RecipeSolver(Solver):
+class BasicRecipeSolver(DAGSolver):
     """Orchestrates the resolution of queries by searching topologies, scaling processes, and evaluating goals."""
     def __init__(
         self,
-        ctx: ProgramContext | set[Process] | None = None,
-        processes: set[Process] | Query | None = None,
-        query: Query | list[Resource] | None = None,
+        processes: set[Process],
+        queries: list[Query] | Query,
         defs: list[Resource | BasicResourceDef] | None = None,
     ) -> None:
-        if isinstance(ctx, ProgramContext):
-            actual_processes = ctx.processes
-            actual_query = ctx.query
-            actual_defs = ctx.defs
-        elif ctx is not None:
-            # Called as RecipeSolver(processes, query)
-            actual_defs = query if isinstance(query, list) else defs
-            actual_query = processes
-            actual_processes = ctx
-        else:
-            actual_processes = set()
-            actual_query = Query(set())
-            actual_defs = defs
-
-        super().__init__(actual_processes, actual_query, actual_defs)
+        super().__init__(processes, queries, defs)
         
+        # Merge tools from all queries to check if processes are valid
+        all_query_tools: set = set()
+        for q in self.queries:
+            all_query_tools.update(q.tools)
+            
         filtered_processes = []
-        for p in actual_processes:
-            if p.has_required_tools(self.query.tools):
+        for p in self.processes:
+            if p.has_required_tools(all_query_tools):
                 filtered_processes.append(p)
                 
-        self._all_processes = sorted(actual_processes, key=lambda p: p.name)
+        self._all_processes = sorted(self.processes, key=lambda p: p.name)
         self.processes = sorted(filtered_processes, key=lambda p: p.name)
         self.processes_in_dag: list[Process] = []
         self.basic_requirements: set[str] = set()
@@ -73,10 +63,11 @@ class RecipeSolver(Solver):
                 if r.basic:
                     basics.add(r.name)
                     self._add_basic(r)
-        for _, r in self.query.query:
-            if r.basic:
-                basics.add(r.name)
-                self._add_basic(r)
+        for q in self.queries:
+            for _, r in q.query:
+                if r.basic:
+                    basics.add(r.name)
+                    self._add_basic(r)
         return basics
 
     def is_basic(self, resource_name: str) -> bool:
@@ -84,7 +75,7 @@ class RecipeSolver(Solver):
         return resource_name in self.basic_resource_names
 
     def _matches_tags(self, required: Resource, provided: Resource) -> bool:
-        """Check if a provided resource satisfies the required resource\'s tags."""
+        """Check if a provided resource satisfies the required resource's tags."""
         req_tags = required.tags - {"basic"}
         prov_tags = provided.tags - {"basic"}
         if not req_tags.issubset(prov_tags):
@@ -270,7 +261,7 @@ class RecipeSolver(Solver):
                     chosen_proc_names.remove(proc.name)
                     chosen_procs.pop()
 
-        initial_needed: list[tuple[Process | None, Resource]] = [(None, res) for _, res in self.query.query]
+        initial_needed: list[tuple[Process | None, Resource]] = [(None, res) for q in self.queries for _, res in q.query]
         search(initial_needed, [], set(), set(), {})
 
         valid_topologies = []
@@ -331,7 +322,8 @@ class RecipeSolver(Solver):
             for qty_out, res_out in proc.out:
                 if any(
                     res_out.name == q_res.name and self._matches_tags(q_res, res_out)
-                    for _, q_res in self.query.query
+                    for q in self.queries
+                    for _, q_res in q.query
                 ):
                     scaled_qty = qty_out * scale
                     edges.append(DAGEdge(
@@ -346,11 +338,12 @@ class RecipeSolver(Solver):
     def _scale_topology(self, processes: list[Process], basic_reqs: dict[str, Resource]) -> tuple[DAG, dict[str, float], dict[str, Quantity], dict[str, Quantity]]:
         """Calculate scale factors for all processes in the topology and construct its fully scaled DAG."""
         demands: dict[str, Quantity] = {}
-        for qty, res in self.query.query:
-            if res.name in demands:
-                demands[res.name] += qty
-            else:
-                demands[res.name] = qty
+        for q in self.queries:
+            for qty, res in q.query:
+                if res.name in demands:
+                    demands[res.name] += qty
+                else:
+                    demands[res.name] = qty
 
         surplus: dict[str, Quantity] = {}
         process_scales: dict[str, float] = {}
@@ -500,7 +493,11 @@ class RecipeSolver(Solver):
                 valid_missing = []
                 for cand in p2_valid:
                     procs = cand["processes"]
-                    missing_tools = self.query.calculate_missing_tools(procs)
+                    missing_tools = {}
+                    for q in self.queries:
+                        missing = q.calculate_missing_tools(procs)
+                        for t_name, t_qty in missing.items():
+                            missing_tools[t_name] = t_qty
                     valid_missing.append((missing_tools, procs))
                 
                 valid_missing.sort(key=lambda item: len(item[0]))
@@ -525,8 +522,8 @@ class RecipeSolver(Solver):
             dag, scales, demands, surplus = self._scale_topology(procs, basic_reqs)
             scaled_candidates.append((dag, procs, basic_reqs, scales, demands, surplus))
 
-        relational_goals = [g for g in self.query.goals if isinstance(g, RelationalGoal)]
-        aggregate_goals = [g for g in self.query.goals if not isinstance(g, RelationalGoal)]
+        relational_goals = [g for q in self.queries for g in q.goals if isinstance(g, RelationalGoal)]
+        aggregate_goals = [g for q in self.queries for g in q.goals if not isinstance(g, RelationalGoal)]
 
         valid_candidates, closest_info = self._evaluate_dags(scaled_candidates, relational_goals, aggregate_goals)
 

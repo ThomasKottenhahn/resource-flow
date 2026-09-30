@@ -11,7 +11,7 @@ project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from resource_flow.solvers.base import Solver
+from resource_flow.solvers.interfaces import DAGSolver
 from resource_flow.parser import RecipeParser
 
 def discover_solvers():
@@ -24,7 +24,7 @@ def discover_solvers():
     for _, module_name, _ in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
         importlib.import_module(module_name)
         
-    return Solver.__subclasses__()
+    return DAGSolver.__subclasses__()
 
 def run_benchmarks(data_dir: Path):
     """Run all solvers against all .rf files in data_dir."""
@@ -42,10 +42,13 @@ def run_benchmarks(data_dir: Path):
             try:
                 parser = RecipeParser()
                 ctx = parser.parse_file(str(rf_file))
-                processes, query = ctx.processes, ctx.query
+                processes, queries = ctx.processes, ctx.queries
+                q_g = queries[0]
+                q = queries[0]
+                query = queries[0]
                 
                 start_time = time.perf_counter()
-                solver_instance = solver_cls(processes, query)
+                solver_instance = solver_cls(processes, queries)
                 solver_instance.solve()
                 end_time = time.perf_counter()
                 

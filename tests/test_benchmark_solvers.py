@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from pathlib import Path
 import sys
 
@@ -12,7 +12,7 @@ def test_discover_solvers():
     solvers = discover_solvers()
     assert len(solvers) > 0
     names = [s.__name__ for s in solvers]
-    assert "RecipeSolver" in names
+    assert "BasicRecipeSolver" in names
 
 def test_run_benchmarks(tmp_path, capsys):
     recipe_content = """
@@ -29,9 +29,9 @@ def test_run_benchmarks(tmp_path, capsys):
     # Each result should be for a specific file and solver
     # Using Path name for easier dict keys
     file_result = results["recipe.rf"]
-    assert "RecipeSolver" in file_result
-    assert file_result["RecipeSolver"]["success"] is True
-    assert "time_ms" in file_result["RecipeSolver"]
+    assert "BasicRecipeSolver" in file_result
+    assert file_result["BasicRecipeSolver"]["success"] is True
+    assert "time_ms" in file_result["BasicRecipeSolver"]
     
     # Not capturing since run_benchmarks might not print directly, 
     # but the script will print a report.

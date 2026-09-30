@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import pytest
 from resource_flow.parser import RecipeParser
-from resource_flow.solvers import RecipeSolver
+from resource_flow.solvers import Solver
 from resource_flow.models import Quantity
 
 # Determine the fixtures directory
@@ -18,7 +18,7 @@ else:
 def serialize_quantity(q: Quantity) -> dict:
     return {"value": q.val, "unit": q.unit}
 
-def dump_solver_output(solver: RecipeSolver, dag) -> dict:
+def dump_solver_output(solver: Solver, dag) -> dict:
     # Serialize the solver output to a standard dictionary format
     output = {
         "process_scales": {proc: float(scale) for proc, scale in dag.process_scales.items()},
@@ -38,9 +38,12 @@ def test_fixture(rf_file: Path):
     # 1. Parse and run the solver
     parser = RecipeParser()
     ctx = parser.parse_file(str(rf_file))
-    processes, query = ctx.processes, ctx.query
+    processes, queries = ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
     
-    solver = RecipeSolver(processes, query)
+    solver = Solver(processes, queries)
     dag = solver.solve()
     
     # 2. Serialize actual output

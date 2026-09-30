@@ -118,20 +118,7 @@ def test_process_basics():
     assert "bake_bread" in repr(p)
 
 
-def test_query_basics():
-    r = Resource("bread", basic=False)
-    q = Quantity(2, "piece")
 
-    query = Query({(q, r)})
-    assert query.query == {(q, r)}
-    assert "Query for" in repr(query)
-
-    # Adding query
-    r2 = Resource("butter", basic=True)
-    q2 = Quantity(50, "g")
-    query2 = Query({(q2, r2)})
-    query.add(query2)
-    assert query.query == {(q, r), (q2, r2)}
 
 def test_quantity_prose_formatting():
     from resource_flow.models import Quantity, Tool

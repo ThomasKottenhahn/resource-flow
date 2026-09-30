@@ -95,7 +95,7 @@ def generate_dag(nodes_count, density):
         
     return processes, all_resources
 
-def generate_solvable_query(processes: list[Process], all_resources: list[str], num_to_query: int):
+def generate_solvable_query(processes: list[Process], all_resources: list[str], num_to_queries: int):
     chosen_resources = random.sample(all_resources, num_to_query)
     
     demands = {res: float(random.randint(1, 100)) for res in chosen_resources}

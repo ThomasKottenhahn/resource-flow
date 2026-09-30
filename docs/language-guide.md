@@ -160,7 +160,7 @@ auto_quench [cost: 15.00, time: 30 min]:
     -> 1 piece steel_sword;
 
 [min manual_labour, fastest] make 1 piece steel_sword;
-[time <= 2 h] make 1 piece steel_sword;
+[time <= 4 h] make 1 piece steel_sword;
 ```
 
 The solver evaluates goals left to right:
@@ -320,3 +320,87 @@ make 550 g pasta;
 - **Relative imports.** You can import files from subdirectories using relative paths, like `use ./kitchen/sauce;`.
 - **Global imports.** The `use` statement imports not only processes, but also macros (`let`) and resource definitions (`def`).
 - **Imports are transitive.** If module A imports module B, any file importing A also gets B's processes, macros, and defs.
+
+---
+
+## Step 10. Timings and Deadlines
+
+Resource Flow can schedule processes chronologically on a timeline using `calendar` blocks, execution types, and deadlines. Let's model a sourdough baking process where some steps require active work and others happen without supervision (like dough rising).
+
+```text
+calendar {
+    work 08:00 to 12:00;
+    work 13:00 to 17:00;
+}
+
+mix_dough [time: 15 min]:
+    500 g flour *, 300 ml water *, 10 g yeast *
+    -> 800 g dough;
+
+rise [time: 12 h, unsupervised]:
+    800 g dough
+    -> 800 g risen_dough;
+
+knead [time: 10 min]:
+    800 g risen_dough
+    -> 800 g kneaded_dough;
+
+bake [time: 45 min, passive]:
+    800 g kneaded_dough
+    -> 800 g bread;
+
+make 800 g bread starting Monday 08:00 by Tuesday 12:00;
+```
+
+- **Define working hours with `calendar`.** The `calendar` block restricts when active processes can occur. Here, active work happens in two shifts, with a lunch break from 12:00 to 13:00.
+- **Time bounds in queries.** You can add `starting` and `by` clauses to `make` queries. The solver uses As-Late-As-Possible (ALAP) scheduling by default to ensure the product is finished right at the deadline (`by Tuesday 12:00`).
+- **Execution types.** By default, processes are active and must fit within `calendar` working hours. 
+    - The `[unsupervised]` tag (used for `rise`) means the process doesn't require human attention and can freely run outside of working hours, overlapping with breaks or running overnight.
+    - The `[passive]` tag (used for `bake`) allows the process to overlap with other tasks (like starting another batch of dough while the first is in the oven), but it typically still requires someone to be present, so it respects the calendar working hours.
+
+### Shelf Life and Hold Constraints
+
+You can constrain the timeline further using resource tags to ensure quality. Let's look at an example with strict timing requirements:
+
+```text
+def 10 l fresh_milk [shelf_life: 48 h] at Farm;
+
+pasteurize [time: 30 min]:
+    10 l fresh_milk
+    -> 10 l pasteurized_milk;
+
+bottle [time: 20 min]:
+    10 l pasteurized_milk [hold <= 15 min]
+    -> 10 l bottled_milk;
+
+make 10 l bottled_milk starting Monday 08:00 by Friday 17:00;
+```
+
+- **`[shelf_life: 48 h]`**: Limits how long a resource can exist before being consumed. In this case, the `fresh_milk` must be pasteurized within 48 hours of being sourced from the farm, forcing the solver to schedule the shopping trip and pasteurization close together.
+- **`[hold <= 15 min]`**: Limits the maximum wait time between the producer process ending and the consumer process starting. Here, `pasteurized_milk` must be bottled within 15 minutes of pasteurization finishing, preventing the solver from scheduling a long break in between the two processes.
+
+---
+
+## Step 11. Maps and Shopping
+
+The solver can optimize travel and shopping times across different locations using `map` blocks and the `at` keyword. Let's model a grocery run for dinner prep:
+
+```text
+map {
+    Home <-> Lidl : 15 min;
+    supplier Lidl [shopping_time: 5 min + 2 min / item];
+}
+
+def 500 g pasta at Lidl;
+def 200 ml cream at Lidl;
+
+cook_dinner [time: 30 min]:
+    500 g pasta, 200 ml cream
+    -> 700 g pasta_alfredo;
+
+make 700 g pasta_alfredo at Home starting 17:00 by 19:00;
+```
+
+- **Define travel time.** `Home <-> Lidl : 15 min;` tells the solver it takes 15 minutes to travel between these locations. When processes occur at different locations, the solver automatically inserts travel transit blocks into the timeline.
+- **Shopping heuristics.** `supplier Lidl [shopping_time: 5 min + 2 min / item];` adds a dynamic time cost for acquiring basic resources. The solver calculates this as a base time (5 min) plus a per-item time (2 min) multiplied by the number of unique resources bought at that supplier (2 items: pasta and cream = 9 minutes).
+- **Assign locations.** Use `at LocationName` to assign processes or queries to a specific location. The solver will trace dependencies backwards and schedule shopping trips at `Lidl` before returning `at Home` to `cook_dinner` in time for the 19:00 deadline.

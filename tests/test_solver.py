@@ -1,6 +1,8 @@
+from resource_flow.dag import DAG
+from typing import cast
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query
-from resource_flow.solvers import RecipeSolver
+from resource_flow.solvers import BasicRecipeSolver
 
 
 def test_solver_basic_detection_and_dag():
@@ -24,7 +26,7 @@ def test_solver_basic_detection_and_dag():
 
     query = Query({(Quantity(2, "piece"), bread)})
 
-    solver = RecipeSolver({make_dough, bake_bread}, query)
+    solver = BasicRecipeSolver({make_dough, bake_bread}, query)
 
     # Basic resource identification
     assert solver.basic_resource_names == {"flour", "water"}
@@ -60,7 +62,7 @@ def test_solver_globally_valid_basic_resource():
     cheese_query = Resource("cheese", basic=False)
     query = Query({(Quantity(900, "g"), lasagna), (Quantity(200, "g"), cheese_query)})
 
-    solver = RecipeSolver({assemble}, query)
+    solver = BasicRecipeSolver({assemble}, query)
     assert solver.is_basic("cheese") is True
     processes_in_dag, basic_reqs = solver.build_dag()
     assert "cheese" in basic_reqs
@@ -78,7 +80,7 @@ def test_solver_cycle_detection():
 
     query = Query({(Quantity(1, "g"), res_a)})
 
-    solver = RecipeSolver({p1, p2}, query)
+    solver = BasicRecipeSolver({p1, p2}, query)
     with pytest.raises(ValueError, match="Cycle detected involving process"):
         solver.build_dag()
 
@@ -87,7 +89,7 @@ def test_solver_no_producer_error():
     # A is not basic, but has no producer
     res_a = Resource("A", basic=False)
     query = Query({(Quantity(1, "g"), res_a)})
-    solver = RecipeSolver(set(), query)
+    solver = BasicRecipeSolver(set(), query)
     with pytest.raises(ValueError, match="No process found to produce non-basic resource 'A'"):
         solver.build_dag()
 
@@ -113,7 +115,7 @@ def test_solver_scaling_solution():
     # We want 2 pieces of bread
     query = Query({(Quantity(2, "piece"), bread)})
 
-    solver = RecipeSolver({make_dough, bake_bread}, query)
+    solver = BasicRecipeSolver({make_dough, bake_bread}, query)
     scales = solver.solve()
 
     # bake_bread output is 1 piece, we need 2, so scale = 2.0
@@ -136,7 +138,7 @@ def test_solver_mermaid_generation():
     bake = Process("bake", {(Quantity(500, "g"), flour)}, {(Quantity(1, "piece"), bread)})
     query = Query({(Quantity(1, "piece"), bread)})
 
-    solver = RecipeSolver({bake}, query)
+    solver = BasicRecipeSolver({bake}, query)
     dag = solver.solve()
     from resource_flow.visualization import Visualizer
     viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
@@ -161,7 +163,7 @@ def test_solver_tag_matching_producer_selection():
 
     query = Query({(Quantity(1, "l"), Resource("soup"))})
 
-    solver = RecipeSolver({proc_conv, proc_org, proc_soup}, query)
+    solver = BasicRecipeSolver({proc_conv, proc_org, proc_soup}, query)
     dag, basic_reqs = solver.build_dag()
 
     assert proc_org in dag
@@ -177,7 +179,7 @@ def test_solver_negated_tag_rejection():
     target_carrots = Resource("carrots", basic=False, tags=frozenset({"organic"}), negated_tags=frozenset({"frozen"}))
     query = Query({(Quantity(1, "kg"), target_carrots)})
 
-    solver = RecipeSolver({proc_freeze}, query)
+    solver = BasicRecipeSolver({proc_freeze}, query)
     with pytest.raises(ValueError, match="No process found to produce non-basic resource 'carrots'"):
         solver.build_dag()
 
@@ -195,9 +197,9 @@ def test_solver_tagged_recipe_end_to_end(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
 
-    solver = RecipeSolver(processes, query)
+    solver = BasicRecipeSolver(processes, queries)
     scales = solver.solve()
 
     assert scales["cook"] == 2.0
@@ -231,7 +233,7 @@ def test_solver_metric_aggregation():
 
     query = Query({(Quantity(2, "l"), res_soup)})
 
-    solver = RecipeSolver({p_prep, p_cook}, query)
+    solver = BasicRecipeSolver({p_prep, p_cook}, query)
     dag = solver.solve()
 
     # Scale factor for both processes is 2.0
@@ -260,9 +262,9 @@ def test_solver_batch_cost_unit_conversion(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
 
-    solver = RecipeSolver(processes, query)
+    solver = BasicRecipeSolver(processes, queries)
     dag = solver.solve()
 
     assert dag["peel"] == 6.0
@@ -283,7 +285,7 @@ def test_solver_dimension_mismatch_error():
     )
     query = Query({(Quantity(100, "g"), Resource("peeled_carrots"))})
 
-    solver = RecipeSolver({p_peel}, query)
+    solver = BasicRecipeSolver({p_peel}, query)
     dag = solver.solve()
 
     from resource_flow.visualization import Visualizer
@@ -316,7 +318,7 @@ def test_solver_print_plan_formatting(capsys):
     )
 
     query = Query({(Quantity(2, "l"), res_soup)})
-    solver = RecipeSolver({p_prep, p_cook}, query)
+    solver = BasicRecipeSolver({p_prep, p_cook}, query)
     dag = solver.solve()
 
     from resource_flow.visualization import Visualizer
@@ -367,7 +369,7 @@ def test_solver_generate_mermaid_reporting():
     )
 
     query = Query({(Quantity(2, "l"), res_soup)})
-    solver = RecipeSolver({p_prep, p_cook}, query)
+    solver = BasicRecipeSolver({p_prep, p_cook}, query)
     dag = solver.solve()
 
     from resource_flow.visualization import Visualizer
@@ -409,12 +411,12 @@ def test_solver_tagged_resource_and_multi_query_graph_edges(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    processes, query = ctx.processes, ctx.query
+    processes, queries = ctx.processes, ctx.queries
 
-    solver = RecipeSolver(processes, query)
+    solver = BasicRecipeSolver(processes, queries)
     dag = solver.solve()
     from resource_flow.visualization import Visualizer
-    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
+    viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, queries)
     mermaid_str = viz.generate_mermaid()
 
     # Edge from plain onions to cut_onions
@@ -447,8 +449,8 @@ def test_basic_resource_cost_isolation(tmp_path):
     from resource_flow.parser import RecipeParser
     parser = RecipeParser()
     ctx = parser.parse_file(str(f))
-    procs, q = ctx.processes, ctx.query
-    solver = RecipeSolver(procs, q)
+    procs, queries = ctx.processes, ctx.queries
+    solver = BasicRecipeSolver(procs, queries)
     dag = solver.solve()
 
     assert dag.calculate_metric("cost") == 2.0

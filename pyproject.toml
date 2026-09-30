@@ -31,3 +31,6 @@ packages = ["resource_flow"]
 
 [tool.setuptools.package-data]
 resource_flow = ["*.lark"]
+
+[tool.pyright]
+extraPaths = ["scripts"]

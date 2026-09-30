@@ -1,7 +1,9 @@
+from resource_flow.dag import DAG
+from typing import cast
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query
 from resource_flow.parser import RecipeParser
-from resource_flow.solvers import RecipeSolver
+from resource_flow.solvers import Solver
 
 
 def test_solver_goal_default_any():
@@ -32,12 +34,12 @@ def test_solver_goal_cheapest_selection():
     )
 
     query_cheapest = Query({(Quantity(1, "kg"), flour_mix)}, goals=["cheapest"])
-    solver_cheap = RecipeSolver({expensive_grind, cheap_grind}, query_cheapest)
-    scales_cheap = solver_cheap.solve()
+    solver_cheap = Solver({expensive_grind, cheap_grind}, query_cheapest)
+    scales_cheap = cast('DAG', solver_cheap.solve())
 
-    assert "cheap_grind" in scales_cheap
-    assert "expensive_grind" not in scales_cheap
-    assert scales_cheap["cheap_grind"] == 1.0
+    assert "cheap_grind" in scales_cheap  # type: ignore
+    assert "expensive_grind" not in scales_cheap  # type: ignore
+    assert scales_cheap["cheap_grind"] == 1.0  # type: ignore
 
 
 def test_solver_goal_fastest_selection():
@@ -63,12 +65,12 @@ def test_solver_goal_fastest_selection():
     )
 
     query_fastest = Query({(Quantity(1, "kg"), flour_mix)}, goals=["fastest"])
-    solver_fast = RecipeSolver({expensive_grind, cheap_grind}, query_fastest)
-    scales_fast = solver_fast.solve()
+    solver_fast = Solver({expensive_grind, cheap_grind}, query_fastest)
+    scales_fast = cast('DAG', solver_fast.solve())
 
-    assert "expensive_grind" in scales_fast
-    assert "cheap_grind" not in scales_fast
-    assert scales_fast["expensive_grind"] == 1.0
+    assert "expensive_grind" in scales_fast  # type: ignore
+    assert "cheap_grind" not in scales_fast  # type: ignore
+    assert scales_fast["expensive_grind"] == 1.0  # type: ignore
 
 
 def test_solver_goal_cascade_tie_breaking():
@@ -93,11 +95,11 @@ def test_solver_goal_cascade_tie_breaking():
     )
 
     query = Query({(Quantity(1, "kg"), out)}, goals=["cheapest", "fastest"])
-    solver = RecipeSolver({proc_slow, proc_fast}, query)
-    scales = solver.solve()
+    solver = Solver({proc_slow, proc_fast}, query)
+    scales = cast('DAG', solver.solve())
 
-    assert "proc_fast" in scales
-    assert "proc_slow" not in scales
+    assert "proc_fast" in scales  # type: ignore
+    assert "proc_slow" not in scales  # type: ignore
 
 
 def test_solver_goal_lexicographical_tie_breaking():
@@ -122,34 +124,14 @@ def test_solver_goal_lexicographical_tie_breaking():
     )
 
     query = Query({(Quantity(1, "kg"), out)}, goals=["cheapest", "fastest"])
-    solver = RecipeSolver({proc_b, proc_a}, query)
-    scales = solver.solve()
+    solver = Solver({proc_b, proc_a}, query)
+    scales = cast('DAG', solver.solve())
 
-    assert "proc_a" in scales
-    assert "proc_b" not in scales
+    assert "proc_a" in scales  # type: ignore
+    assert "proc_b" not in scales  # type: ignore
 
 
-def test_solver_goal_multi_query_override(tmp_path):
-    recipe_content = """
-    proc_slow [cost: 2.0, time: 30 min]: 1 kg wheat * -> 1 kg flour;
-    proc_fast [cost: 5.0, time: 5 min]: 1 kg wheat * -> 1 kg flour;
 
-    [cheapest] make 1 kg flour;
-    [fastest] make 2 kg flour;
-    """
-    recipe_file = tmp_path / "multi_query.rf"
-    recipe_file.write_text(recipe_content, encoding="utf-8")
-
-    parser = RecipeParser()
-    ctx = parser.parse_file(str(recipe_file))
-    _, processes, query = ctx.resources, ctx.processes, ctx.query
-
-    # Last query goal [fastest] overrides preceding [cheapest]
-    assert query.goals == ("fastest",)
-
-    solver = RecipeSolver(processes, query)
-    scales = solver.solve()
-    assert "proc_fast" in scales
 
 
 def test_solver_goal_cycle_pruning_with_valid_alternative():
@@ -166,12 +148,12 @@ def test_solver_goal_cycle_pruning_with_valid_alternative():
 
     query = Query({(Quantity(1, "g"), res_a)}, goals=["cheapest"])
 
-    solver = RecipeSolver({p1, p2, p3}, query)
-    scales = solver.solve()
+    solver = Solver({p1, p2, p3}, query)
+    scales = cast('DAG', solver.solve())
 
-    assert "p3_valid" in scales
-    assert "p1_cycle" not in scales
-    assert "p2_cycle" not in scales
+    assert "p3_valid" in scales  # type: ignore
+    assert "p1_cycle" not in scales  # type: ignore
+    assert "p2_cycle" not in scales  # type: ignore
 
 
 def test_solver_goal_extensibility():
@@ -180,9 +162,9 @@ def test_solver_goal_extensibility():
     proc = Process("proc", {(Quantity(1, "kg"), res_a)}, {(Quantity(1, "kg"), res_out)}, cost=10.0, time=15.0)
 
     query = Query({(Quantity(1, "kg"), res_out)})
-    solver = RecipeSolver({proc}, query)
+    solver = Solver({proc}, query)
 
-    dag = solver.solve()
+    dag = cast('DAG', solver.solve())
 
     # Built-in evaluation checks
     from resource_flow.models import AggregateGoal, AnyGoal
@@ -207,15 +189,15 @@ def test_solver_goal_basic_vs_process_cost_comparison(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    _, processes, query = ctx.resources, ctx.processes, ctx.query
+    _, processes, queries = ctx.resources, ctx.processes, ctx.queries
 
-    solver = RecipeSolver(processes, query)
-    scales = solver.solve()
+    solver = Solver(processes, queries)
+    scales = cast('DAG', solver.solve())
     # Mixing batter costs ~5.75 total vs buying pre-made batter @ 15.64 total.
     # [cheapest] must select mix_batter!
-    assert "mix_batter" in scales
-    assert "fry" in scales
-    assert scales.calculate_metric("cost") == pytest.approx(5.75, abs=0.01)
+    assert "mix_batter" in scales  # type: ignore
+    assert "fry" in scales  # type: ignore
+    assert scales.calculate_metric("cost") == pytest.approx(5.75, abs=0.01)  # type: ignore
 
 
 def test_solver_goal_aggregate_custom_metrics(tmp_path):
@@ -229,16 +211,16 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solvers import RecipeSolver
+    from resource_flow.solvers import Solver
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(ctx)
-    scales = solver.solve()
+    solver = Solver(ctx)
+    scales = cast('DAG', solver.solve())
     
     # [min manual_labour] should prefer harvest_machine
-    assert "harvest_machine" in scales
-    assert "harvest_manual" not in scales
+    assert "harvest_machine" in scales  # type: ignore
+    assert "harvest_manual" not in scales  # type: ignore
 
     recipe_content_max = """
     harvest_manual [manual_labour, co2: 2, throughput: 10]: 100 g seeds * -> 100 kg crops;
@@ -250,13 +232,13 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     recipe_file_max.write_text(recipe_content_max, encoding="utf-8")
     
     ctx = parser.parse_file(str(recipe_file_max))
-    _, processes, query = ctx.resources, ctx.processes, ctx.query
-    solver = RecipeSolver(ctx)
-    scales = solver.solve()
+    _, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    solver = Solver(ctx)
+    scales = cast('DAG', solver.solve())
     
     # [max throughput] should also prefer harvest_machine
-    assert "harvest_machine" in scales
-    assert "harvest_manual" not in scales
+    assert "harvest_machine" in scales  # type: ignore
+    assert "harvest_manual" not in scales  # type: ignore
     
     recipe_content_min_co2 = """
     harvest_manual [manual_labour, co2: 2, throughput: 10]: 100 g seeds * -> 100 kg crops;
@@ -268,13 +250,13 @@ def test_solver_goal_aggregate_custom_metrics(tmp_path):
     recipe_file_min_co2.write_text(recipe_content_min_co2, encoding="utf-8")
     
     ctx = parser.parse_file(str(recipe_file_min_co2))
-    _, processes, query = ctx.resources, ctx.processes, ctx.query
-    solver = RecipeSolver(ctx)
-    scales = solver.solve()
+    _, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    solver = Solver(ctx)
+    scales = cast('DAG', solver.solve())
     
     # [min co2] should prefer harvest_manual
-    assert "harvest_manual" in scales
-    assert "harvest_machine" not in scales
+    assert "harvest_manual" in scales  # type: ignore
+    assert "harvest_machine" not in scales  # type: ignore
 
 
 def test_solver_goal_relational_constraints(tmp_path):
@@ -288,17 +270,17 @@ def test_solver_goal_relational_constraints(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solvers import RecipeSolver
+    from resource_flow.solvers import Solver
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(ctx)
-    scales = solver.solve()
+    solver = Solver(ctx)
+    scales = cast('DAG', solver.solve())
     
     # 2 h is 120 min, so harvest_manual fails the constraint.
     # harvest_machine (10 min) passes.
-    assert "harvest_machine" in scales
-    assert "harvest_manual" not in scales
+    assert "harvest_machine" in scales  # type: ignore
+    assert "harvest_manual" not in scales  # type: ignore
 
 
 def test_solver_goal_infeasible_closest_match(tmp_path):
@@ -312,12 +294,12 @@ def test_solver_goal_infeasible_closest_match(tmp_path):
     recipe_file.write_text(recipe_content, encoding="utf-8")
 
     from resource_flow.parser import RecipeParser
-    from resource_flow.solvers import RecipeSolver
+    from resource_flow.solvers import Solver
     import pytest
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
-    solver = RecipeSolver(ctx)
+    solver = Solver(ctx)
     
     with pytest.raises(ValueError, match=r"No solution found for manual_labour == 0\.0\. Closest solution found: manual_labour = 1\.0"):
         solver.solve()
@@ -339,13 +321,14 @@ def test_basic_resource_custom_tag_scaling(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(f_grams))
-    _, procs_g, q_g = ctx.resources, ctx.processes, ctx.query
-    dag_g = RecipeSolver(ctx).solve()
+    _, procs_g, queries = ctx.resources, ctx.processes, ctx.queries
+    dag_g = Solver(ctx).solve()
 
     ctx = parser.parse_file(str(f_kg))
-    _, procs_kg, q_kg = ctx.resources, ctx.processes, ctx.query
-    dag_kg = RecipeSolver(ctx).solve()
+    _, procs_kg, q_kg = ctx.resources, ctx.processes, ctx.queries
+    dag_kg = Solver(ctx).solve()
 
+    # pyrefly: ignore [missing-attribute]
     assert dag_g.calculate_metric("co2") == dag_kg.calculate_metric("co2") == 200.0
 
 
@@ -360,8 +343,8 @@ def test_relational_goal_error_message_unit_formatting(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(f))
-    _, procs, q = ctx.resources, ctx.processes, ctx.query
-    solver = RecipeSolver(ctx)
+    _, procs, queries = ctx.resources, ctx.processes, ctx.queries
+    solver = Solver(ctx)
 
     with pytest.raises(ValueError, match=r"No solution found for time <= 45\.0 min\. Closest solution found: time = 60\.0"):
         solver.solve()

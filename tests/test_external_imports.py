@@ -14,7 +14,10 @@ def test_external_import_basic(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(main_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     assert len(processes) == 1
     assert list(processes)[0].name == "sub::peel"
@@ -35,7 +38,10 @@ def test_external_import_specific(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(main_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     assert len(processes) == 1
     assert list(processes)[0].name == "sub::p2"
@@ -58,7 +64,10 @@ def test_external_import_nested(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(main_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     assert len(processes) == 2
     names = {p.name for p in processes}
@@ -77,7 +86,10 @@ def test_implicit_external_import_string(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(main_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     assert len(processes) == 1
     assert list(processes)[0].name == "sub::peel"
@@ -96,7 +108,10 @@ def test_implicit_external_import_bare(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(main_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     assert len(processes) == 1
     assert list(processes)[0].name == "sub::peel"
@@ -118,7 +133,10 @@ def test_implicit_external_import_collision(tmp_path):
 
     parser = RecipeParser()
     ctx = parser.parse_file(str(main_file))
-    resources, processes, query = ctx.resources, ctx.processes, ctx.query
+    resources, processes, queries = ctx.resources, ctx.processes, ctx.queries
+    q_g = queries[0]
+    q = queries[0]
+    query = queries[0]
 
     names = {p.name for p in processes}
     # It should resolve to the local module, not the file
