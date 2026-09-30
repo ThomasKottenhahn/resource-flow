@@ -25,6 +25,11 @@ def main() -> None:
         choices=["s", "min", "h"],
         help="Time unit for execution metrics summary (default: min).",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output the execution plan and graph as a machine-readable JSON structure.",
+    )
     args = parser.parse_args()
 
     try:
@@ -39,46 +44,68 @@ def main() -> None:
         dag = result.dag if is_timeline else result
         
         viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.queries)
-        mermaid_text = viz.generate_mermaid(time_unit=args.time_unit)
-        if is_timeline:
-            gantt_text = viz.generate_gantt(result)
-            mermaid_text = gantt_text + "\n\n" + mermaid_text
-
-        if args.output:
-            plan_stream = io.StringIO()
-            with redirect_stdout(plan_stream):
-                viz.print_plan(time_unit=args.time_unit)
-            plan_text = plan_stream.getvalue()
-
-            output_path = Path(args.output)
-            is_dir = (
-                args.output.endswith("/")
-                or args.output.endswith("\\")
-                or output_path.is_dir()
-            )
-
-            if is_dir:
-                output_path.mkdir(parents=True, exist_ok=True)
-                plan_file = output_path / "plan.txt"
-                mermaid_file = output_path / "flow.mermaid"
+        if args.json:
+            json_text = viz.generate_json(timeline=result if is_timeline else None, time_unit=args.time_unit)
+            if args.output:
+                output_path = Path(args.output)
+                is_dir = (
+                    args.output.endswith("/")
+                    or args.output.endswith("\\")
+                    or output_path.is_dir()
+                )
+                if is_dir:
+                    output_path.mkdir(parents=True, exist_ok=True)
+                    json_file = output_path / "plan.json"
+                else:
+                    if output_path.parent:
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                    json_file = output_path.with_name(f"{output_path.name}_plan.json")
+                
+                json_file.write_text(json_text, encoding="utf-8")
+                print(f"JSON Plan saved to: {json_file}")
             else:
-                if output_path.parent:
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                plan_file = output_path.with_name(f"{output_path.name}_plan.txt")
-                mermaid_file = output_path.with_name(f"{output_path.name}_flow.mermaid")
-
-            plan_file.write_text(plan_text, encoding="utf-8")
-            mermaid_file.write_text(mermaid_text, encoding="utf-8")
-            print(f"Plan saved to: {plan_file}")
-            print(f"Mermaid visualization saved to: {mermaid_file}")
+                print(json_text)
         else:
-            print("\n------------------------------------------------")
-            print("Solving Recipe...")
-            print("------------------------------------------------")
-            viz.print_plan(time_unit=args.time_unit)
-            print("Mermaid Visualization:")
-            print(mermaid_text)
-            print("------------------------------------------------\n")
+            mermaid_text = viz.generate_mermaid(time_unit=args.time_unit)
+            if is_timeline:
+                gantt_text = viz.generate_gantt(result)
+                mermaid_text = gantt_text + "\n\n" + mermaid_text
+
+            if args.output:
+                plan_stream = io.StringIO()
+                with redirect_stdout(plan_stream):
+                    viz.print_plan(time_unit=args.time_unit)
+                plan_text = plan_stream.getvalue()
+
+                output_path = Path(args.output)
+                is_dir = (
+                    args.output.endswith("/")
+                    or args.output.endswith("\\")
+                    or output_path.is_dir()
+                )
+
+                if is_dir:
+                    output_path.mkdir(parents=True, exist_ok=True)
+                    plan_file = output_path / "plan.txt"
+                    mermaid_file = output_path / "flow.mermaid"
+                else:
+                    if output_path.parent:
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                    plan_file = output_path.with_name(f"{output_path.name}_plan.txt")
+                    mermaid_file = output_path.with_name(f"{output_path.name}_flow.mermaid")
+
+                plan_file.write_text(plan_text, encoding="utf-8")
+                mermaid_file.write_text(mermaid_text, encoding="utf-8")
+                print(f"Plan saved to: {plan_file}")
+                print(f"Mermaid visualization saved to: {mermaid_file}")
+            else:
+                print("\n------------------------------------------------")
+                print("Solving Recipe...")
+                print("------------------------------------------------")
+                viz.print_plan(time_unit=args.time_unit)
+                print("Mermaid Visualization:")
+                print(mermaid_text)
+                print("------------------------------------------------\n")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

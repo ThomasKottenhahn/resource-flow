@@ -358,3 +358,256 @@ class Visualizer:
                 
         lines.append("```")
         return "\n".join(lines)
+
+    def generate_json(self, timeline=None, time_unit: str = "min") -> str:
+        """Generate a JSON representation of the plan and graph."""
+        import json
+        
+        result = {}
+        
+        # 1. Plan
+        processes = self.dag.processes
+        process_scales = self.dag.process_scales
+        plan = []
+        for i, proc in enumerate(processes, 1):
+            scale = process_scales[proc.name]
+            step = {
+                "step": i,
+                "process": proc.name,
+                "scale": scale,
+                "cost": proc.cost,
+                "time": proc.time,
+                "time_unit": proc.time_unit,
+                "tags": sorted(list(proc.tags)) if proc.tags else [],
+                "tools": [{"name": t.name, "quantity": t.quantity.val, "unit": t.quantity.unit} for t in sorted(proc.tools, key=lambda x: x.name)],
+                "inputs": [],
+                "outputs": []
+            }
+            for qty, res in proc.inp:
+                scaled_qty = qty * scale
+                source = self._find_source_process(res, proc)
+                is_basic = res.basic or source is None
+                step["inputs"].append({
+                    "name": res.name,
+                    "quantity": scaled_qty.val,
+                    "unit": scaled_qty.unit,
+                    "is_basic": is_basic,
+                    "tags": sorted(list(res.tags - {"basic"})) + [f"!{t}" for t in sorted(res.negated_tags)]
+                })
+            for qty, res in proc.out:
+                scaled_qty = qty * scale
+                surplus_val = 0.0
+                if res.name in self.surplus and self.surplus[res.name].val > 0.001:
+                    surplus_qty = self.surplus[res.name]
+                    try:
+                        surplus_val = surplus_qty.convert_to(qty.unit).val
+                    except ValueError:
+                        pass
+                step["outputs"].append({
+                    "name": res.name,
+                    "quantity": scaled_qty.val,
+                    "unit": scaled_qty.unit,
+                    "tags": sorted(list(res.tags - {"basic"})) + [f"!{t}" for t in sorted(res.negated_tags)],
+                    "surplus": surplus_val
+                })
+            plan.append(step)
+        result["plan"] = plan
+        
+        # 2. Basic Resources
+        supplier_groups = {}
+        for name, qty in sorted(self.demands.items()):
+            edge = next((e for e in self.dag.edges if self.dag._is_basic_edge(e) and e.resource.name == name), None)
+            basic_res = edge.resource if edge else None
+            supplier = edge.source if edge and isinstance(edge.source, str) else None
+            if not basic_res and self.basic_resources.get(name):
+                basic_res = self.basic_resources[name][0]
+            
+            group_name = supplier if supplier else "Global"
+            if group_name not in supplier_groups:
+                supplier_groups[group_name] = []
+                
+            cost_val = basic_res.calculate_cost(qty) if basic_res and basic_res.cost > 0 else 0.0
+            supplier_groups[group_name].append({
+                "name": name,
+                "quantity": qty.val,
+                "unit": qty.unit,
+                "cost": cost_val,
+                "tags": sorted(list(basic_res.tags - {"basic"})) + [f"!{t}" for t in sorted(basic_res.negated_tags)] if basic_res else []
+            })
+        result["basic_resources"] = supplier_groups
+        
+        # 3. Metrics
+        result["metrics"] = self.get_metrics(time_unit=time_unit)
+        
+        # 4. Gantt (Timeline)
+        if timeline:
+            gantt = {}
+            location_tasks = {}
+            for task in timeline.tasks:
+                loc = getattr(task, "location", "Unknown")
+                if not loc:
+                    loc = "Global"
+                if loc not in location_tasks:
+                    location_tasks[loc] = []
+                location_tasks[loc].append(task)
+                
+            time_fmt = "%Y-%m-%d %H:%M:%S"
+            for loc, tasks in location_tasks.items():
+                gantt[loc] = []
+                for task in tasks:
+                    name = getattr(task, "name", None)
+                    if not name and hasattr(task, "process"):
+                        name = task.process.name
+                    
+                    start_t = task.start_time
+                    end_t = task.end_time
+                    if start_t == end_t:
+                        import datetime
+                        end_t = start_t + datetime.timedelta(seconds=1)
+                        
+                    gantt[loc].append({
+                        "name": name,
+                        "start": start_t.strftime(time_fmt),
+                        "end": end_t.strftime(time_fmt)
+                    })
+            result["gantt"] = gantt
+            
+        # 5. Graph
+        nodes = []
+        edges = []
+        
+        for proc in processes:
+            scale = process_scales[proc.name]
+            nodes.append({
+                "id": proc.name,
+                "type": "process",
+                "name": proc.original_label,
+                "scale": scale,
+                "cost": proc.cost,
+                "time": proc.time,
+                "time_unit": proc.time_unit,
+                "tags": sorted(list(proc.tags)) if proc.tags else [],
+                "tools": [{"name": t.name, "quantity": t.quantity.val, "unit": t.quantity.unit} for t in sorted(proc.tools, key=lambda x: x.name)]
+            })
+            
+        basic_reqs = self._basic_resource_names()
+        supplier_nodes = set()
+        
+        for name in sorted(basic_reqs):
+            edge = next((e for e in self.dag.edges if self.dag._is_basic_edge(e) and e.resource.name == name), None)
+            res = edge.resource if edge else None
+            supplier = edge.source if edge and isinstance(edge.source, str) else None
+            if not res and self.basic_resources.get(name):
+                res = self.basic_resources[name][0]
+                
+            if name in self.demands:
+                qty = self.demands[name]
+                cost_val = res.calculate_cost(qty) if res and res.cost > 0 else 0.0
+                nodes.append({
+                    "id": f"basic_{name}",
+                    "type": "basic_resource",
+                    "name": name,
+                    "quantity": qty.val,
+                    "unit": qty.unit,
+                    "cost": cost_val,
+                    "tags": sorted(list(res.tags - {"basic"})) + [f"!{t}" for t in sorted(res.negated_tags)] if res else []
+                })
+            else:
+                nodes.append({
+                    "id": f"basic_{name}",
+                    "type": "basic_resource",
+                    "name": name,
+                    "quantity": 0.0,
+                    "unit": "piece",
+                    "cost": 0.0,
+                    "tags": sorted(list(res.tags - {"basic"})) + [f"!{t}" for t in sorted(res.negated_tags)] if res else []
+                })
+                
+            if supplier:
+                supplier_id = supplier.replace(" ", "_")
+                if supplier not in supplier_nodes:
+                    supplier_nodes.add(supplier)
+                    nodes.append({
+                        "id": supplier_id,
+                        "type": "supplier",
+                        "name": supplier
+                    })
+                edges.append({
+                    "source": supplier_id,
+                    "target": f"basic_{name}",
+                    "resource": name,
+                    "quantity": 0.0,
+                    "unit": "piece",
+                    "tags": []
+                })
+                
+        query_targets = []
+        for q in self.queries:
+            for qty, res in sorted(q.query, key=lambda item: item[1].name):
+                query_targets.append({
+                    "name": res.name,
+                    "quantity": qty.val,
+                    "unit": qty.unit,
+                    "tags": sorted(list(res.tags - {"basic"})) + [f"!{t}" for t in sorted(res.negated_tags)]
+                })
+        nodes.append({
+            "id": "Query",
+            "type": "query",
+            "targets": query_targets
+        })
+        
+        for proc in processes:
+            scale = process_scales[proc.name]
+            for qty_in, res_in in proc.inp:
+                scaled_qty = qty_in * scale
+                source = self._find_source_process(res_in, proc)
+                source_id = source.name if source is not None else f"basic_{res_in.name}"
+                edges.append({
+                    "source": source_id,
+                    "target": proc.name,
+                    "resource": res_in.name,
+                    "quantity": scaled_qty.val,
+                    "unit": scaled_qty.unit,
+                    "tags": sorted(list(res_in.tags - {"basic"})) + [f"!{t}" for t in sorted(res_in.negated_tags)]
+                })
+                
+            for qty_out, res_out in proc.out:
+                if any(res_out.name == q_res.name and self._matches_tags(q_res, res_out) for q in self.queries for _, q_res in q.query):
+                    scaled_qty = qty_out * scale
+                    edges.append({
+                        "source": proc.name,
+                        "target": "Query",
+                        "resource": res_out.name,
+                        "quantity": scaled_qty.val,
+                        "unit": scaled_qty.unit,
+                        "tags": sorted(list(res_out.tags - {"basic"})) + [f"!{t}" for t in sorted(res_out.negated_tags)]
+                    })
+                    
+        all_query_items = []
+        for q in self.queries:
+            all_query_items.extend(q.query)
+            
+        for q_qty, q_res in sorted(all_query_items, key=lambda item: item[1].name):
+            source = self._find_source_process(q_res, "Query")
+            if q_res.basic or source is None:
+                produced_by_dag = any(
+                    any(res_out.name == q_res.name and self._matches_tags(q_res, res_out)
+                        for _, res_out in proc.out)
+                    for proc in processes
+                )
+                if not produced_by_dag:
+                    edges.append({
+                        "source": f"basic_{q_res.name}",
+                        "target": "Query",
+                        "resource": q_res.name,
+                        "quantity": q_qty.val,
+                        "unit": q_qty.unit,
+                        "tags": sorted(list(q_res.tags - {"basic"})) + [f"!{t}" for t in sorted(q_res.negated_tags)]
+                    })
+                    
+        result["graph"] = {
+            "nodes": nodes,
+            "edges": edges
+        }
+        
+        return json.dumps(result, indent=2)
