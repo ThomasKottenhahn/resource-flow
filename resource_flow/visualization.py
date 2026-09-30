@@ -293,14 +293,44 @@ class Visualizer:
 
     def generate_gantt(self, timeline, time_unit: str = "min") -> str:
         """Generate a Mermaid Gantt chart for a given TimelineSchedule."""
-        lines = ["```mermaid", "gantt", "    title Resource Flow Schedule", "    dateFormat YYYY-MM-DD HH:mm"]
-        lines.append("    axisFormat %H:%M")
+        min_time = None
+        max_time = None
+        for task in timeline.tasks:
+            if min_time is None or task.start_time < min_time:
+                min_time = task.start_time
+            if max_time is None or task.end_time > max_time:
+                max_time = task.end_time
+
+        if min_time and max_time:
+            span = max_time - min_time
+            same_day = min_time.date() == max_time.date()
+            if same_day:
+                date_format = "HH:mm:ss"
+                axis_format = "%H:%M"
+                time_fmt = "%H:%M:%S"
+            elif span.days < 7:
+                date_format = "YYYY-MM-DD HH:mm:ss"
+                axis_format = "%a %H:%M"
+                time_fmt = "%Y-%m-%d %H:%M:%S"
+            else:
+                date_format = "YYYY-MM-DD HH:mm:ss"
+                axis_format = "%Y-%m-%d"
+                time_fmt = "%Y-%m-%d %H:%M:%S"
+        else:
+            date_format = "YYYY-MM-DD HH:mm:ss"
+            axis_format = "%H:%M"
+            time_fmt = "%Y-%m-%d %H:%M:%S"
+
+        lines = ["```mermaid", "gantt", "    title Resource Flow Schedule", f"    dateFormat {date_format}"]
+        lines.append(f"    axisFormat {axis_format}")
         
         # Group tasks by location/actor
         # Since actors aren't explicit, we can group by location
         location_tasks: dict = {}
         for task in timeline.tasks:
             loc = getattr(task, "location", "Unknown")
+            if not loc:
+                loc = "Global"
             if loc not in location_tasks:
                 location_tasks[loc] = []
             location_tasks[loc].append(task)
@@ -311,10 +341,18 @@ class Visualizer:
                 name = getattr(task, "name", None)
                 if not name and hasattr(task, "process"):
                     name = task.process.name
+                if name:
+                    name = name.replace(":", "-")
                 
+                start_t = task.start_time
+                end_t = task.end_time
+                if start_t == end_t:
+                    import datetime
+                    end_t = start_t + datetime.timedelta(seconds=1)
+
                 # Format start and end times for mermaid
-                start_str = task.start_time.strftime("%Y-%m-%d %H:%M")
-                end_str = task.end_time.strftime("%Y-%m-%d %H:%M")
+                start_str = start_t.strftime(time_fmt)
+                end_str = end_t.strftime(time_fmt)
                 
                 lines.append(f"    {name} : {start_str}, {end_str}")
                 
