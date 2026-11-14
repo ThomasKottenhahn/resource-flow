@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 import sys
 from .parser import RecipeParser
-from .solvers import Solver
+from .solvers import RecipeSolver
 from .visualization import Visualizer
 
 
@@ -36,16 +36,11 @@ def main() -> None:
         recipe_parser = RecipeParser()
         ctx = recipe_parser.parse_file(args.input)
 
-        solver = Solver(ctx)
-        result = solver.solve()
-        from .models import TimelineSchedule
-        
-        is_timeline = isinstance(result, TimelineSchedule)
-        dag = result.dag if is_timeline else result
-        
-        viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.queries)
+        solver = RecipeSolver(ctx)
+        dag = solver.solve()
+        viz = Visualizer(dag, solver.final_demands, solver.final_surplus, solver.basic_resources, solver.query)
         if args.json:
-            json_text = viz.generate_json(timeline=result if is_timeline else None, time_unit=args.time_unit)
+            json_text = viz.generate_json(time_unit=args.time_unit)
             if args.output:
                 output_path = Path(args.output)
                 is_dir = (
@@ -67,9 +62,6 @@ def main() -> None:
                 print(json_text)
         else:
             mermaid_text = viz.generate_mermaid(time_unit=args.time_unit)
-            if is_timeline:
-                gantt_text = viz.generate_gantt(result)
-                mermaid_text = gantt_text + "\n\n" + mermaid_text
 
             if args.output:
                 plan_stream = io.StringIO()

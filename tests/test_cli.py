@@ -118,3 +118,42 @@ def test_cli_json_file_output(tmp_path):
     data = json.loads(content)
     assert "plan" in data
     assert data["plan"][0]["process"] == "prep"
+
+
+def _run_json(tmp_path, capsys, recipe_content):
+    import json
+    recipe_file = tmp_path / "recipe.rf"
+    recipe_file.write_text(recipe_content, encoding="utf-8")
+    with patch("sys.argv", ["rflow", str(recipe_file), "--json"]):
+        main()
+    return json.loads(capsys.readouterr().out)
+
+
+def test_cli_json_time_is_total_duration_of_step(tmp_path, capsys):
+    data = _run_json(tmp_path, capsys, """
+    prep [time: 10 min]: 500 g carrots * -> 450 g chopped_carrots;
+    make 1350 g chopped_carrots;
+    """)
+    step = data["plan"][0]
+    assert step["scale"] == pytest.approx(3.0)
+    assert step["time"] == pytest.approx(30.0)
+    node = next(n for n in data["graph"]["nodes"] if n["id"] == "prep")
+    assert node["time"] == pytest.approx(30.0)
+    assert data["metrics"]["total_time"] == pytest.approx(30.0)
+
+
+def test_cli_json_untagged_process_time_is_zero(tmp_path, capsys):
+    data = _run_json(tmp_path, capsys, """
+    prep: 500 g carrots * -> 450 g chopped_carrots;
+    make 900 g chopped_carrots;
+    """)
+    assert data["plan"][0]["time"] == 0
+    assert data["plan"][0]["time"] is not None
+
+
+def test_cli_json_has_no_timeline_section(tmp_path, capsys):
+    data = _run_json(tmp_path, capsys, """
+    prep [time: 10 min]: 500 g carrots * -> 450 g chopped_carrots;
+    make 450 g chopped_carrots;
+    """)
+    assert set(data) == {"plan", "basic_resources", "metrics", "graph"}

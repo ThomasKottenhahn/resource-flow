@@ -15,16 +15,13 @@ class Visualizer:
         demands: dict[str, Quantity],
         surplus: dict[str, Quantity],
         basic_resources: dict[str, list[Resource]],
-        queries: "list[Query] | Query | None" = None,
+        query: Query,
     ) -> None:
         self.dag = dag
         self.demands = demands
         self.surplus = surplus
         self.basic_resources = basic_resources
-        if isinstance(queries, Query):
-            self.queries = [queries]
-        else:
-            self.queries = queries or []
+        self.query = query
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -230,10 +227,9 @@ class Visualizer:
                 lines.append(f'    {supplier_id} --> basic_{name}')
 
         query_targets = []
-        for q in self.queries:
-            for qty, res in sorted(q.query, key=lambda item: item[1].name):
-                res_tags_str = self._format_resource_tags(res)
-                query_targets.append(f"{qty.val:.2f} {qty.unit} {res.name}{res_tags_str}")
+        for qty, res in sorted(self.query.query, key=lambda item: item[1].name):
+            res_tags_str = self._format_resource_tags(res)
+            query_targets.append(f"{qty.val:.2f} {qty.unit} {res.name}{res_tags_str}")
         lines.append(f'    Query["Query: {", ".join(query_targets)}"]')
 
         for proc in processes:
@@ -252,18 +248,17 @@ class Visualizer:
                     )
 
             for qty_out, res_out in proc.out:
-                if any(res_out.name == q_res.name and self._matches_tags(q_res, res_out) for q in self.queries for _, q_res in q.query):
+                if any(
+                    res_out.name == q_res.name and self._matches_tags(q_res, res_out)
+                    for _, q_res in self.query.query
+                ):
                     scaled_qty = qty_out * scale
                     res_tags_str = self._format_resource_tags(res_out)
                     lines.append(
                         f'    {proc.name} -->|"{scaled_qty.val:.2f} {scaled_qty.unit} {res_out.name}{res_tags_str}"| Query'
                     )
 
-        all_query_items: list = []
-        for q in self.queries:
-            all_query_items.extend(q.query)
-            
-        for q_qty, q_res in sorted(all_query_items, key=lambda item: item[1].name):
+        for q_qty, q_res in sorted(self.query.query, key=lambda item: item[1].name):
             source = self._find_source_process(q_res, "Query")  # no consumer for query targets
             if q_res.basic or source is None:
                 # check if any process in dag produces this
@@ -291,75 +286,7 @@ class Visualizer:
         lines.append("```")
         return "\n".join(lines)
 
-    def generate_gantt(self, timeline, time_unit: str = "min") -> str:
-        """Generate a Mermaid Gantt chart for a given TimelineSchedule."""
-        min_time = None
-        max_time = None
-        for task in timeline.tasks:
-            if min_time is None or task.start_time < min_time:
-                min_time = task.start_time
-            if max_time is None or task.end_time > max_time:
-                max_time = task.end_time
-
-        if min_time and max_time:
-            span = max_time - min_time
-            same_day = min_time.date() == max_time.date()
-            if same_day:
-                date_format = "HH:mm:ss"
-                axis_format = "%H:%M"
-                time_fmt = "%H:%M:%S"
-            elif span.days < 7:
-                date_format = "YYYY-MM-DD HH:mm:ss"
-                axis_format = "%a %H:%M"
-                time_fmt = "%Y-%m-%d %H:%M:%S"
-            else:
-                date_format = "YYYY-MM-DD HH:mm:ss"
-                axis_format = "%Y-%m-%d"
-                time_fmt = "%Y-%m-%d %H:%M:%S"
-        else:
-            date_format = "YYYY-MM-DD HH:mm:ss"
-            axis_format = "%H:%M"
-            time_fmt = "%Y-%m-%d %H:%M:%S"
-
-        lines = ["```mermaid", "gantt", "    title Resource Flow Schedule", f"    dateFormat {date_format}"]
-        lines.append(f"    axisFormat {axis_format}")
-        
-        # Group tasks by location/actor
-        # Since actors aren't explicit, we can group by location
-        location_tasks: dict = {}
-        for task in timeline.tasks:
-            loc = getattr(task, "location", "Unknown")
-            if not loc:
-                loc = "Global"
-            if loc not in location_tasks:
-                location_tasks[loc] = []
-            location_tasks[loc].append(task)
-            
-        for loc, tasks in location_tasks.items():
-            lines.append(f"    section {loc}")
-            for task in tasks:
-                name = getattr(task, "name", None)
-                if not name and hasattr(task, "process"):
-                    name = task.process.name
-                if name:
-                    name = name.replace(":", "-")
-                
-                start_t = task.start_time
-                end_t = task.end_time
-                if start_t == end_t:
-                    import datetime
-                    end_t = start_t + datetime.timedelta(seconds=1)
-
-                # Format start and end times for mermaid
-                start_str = start_t.strftime(time_fmt)
-                end_str = end_t.strftime(time_fmt)
-                
-                lines.append(f"    {name} : {start_str}, {end_str}")
-                
-        lines.append("```")
-        return "\n".join(lines)
-
-    def generate_json(self, timeline=None, time_unit: str = "min") -> str:
+    def generate_json(self, time_unit: str = "min") -> str:
         """Generate a JSON representation of the plan and graph."""
         import json
         
@@ -376,7 +303,7 @@ class Visualizer:
                 "process": proc.name,
                 "scale": scale,
                 "cost": proc.cost,
-                "time": proc.time,
+                "time": proc.time * scale,
                 "time_unit": proc.time_unit,
                 "tags": sorted(list(proc.tags)) if proc.tags else [],
                 "tools": [{"name": t.name, "quantity": t.quantity.val, "unit": t.quantity.unit} for t in sorted(proc.tools, key=lambda x: x.name)],
@@ -439,40 +366,7 @@ class Visualizer:
         # 3. Metrics
         result["metrics"] = self.get_metrics(time_unit=time_unit)
         
-        # 4. Gantt (Timeline)
-        if timeline:
-            gantt = {}
-            location_tasks = {}
-            for task in timeline.tasks:
-                loc = getattr(task, "location", "Unknown")
-                if not loc:
-                    loc = "Global"
-                if loc not in location_tasks:
-                    location_tasks[loc] = []
-                location_tasks[loc].append(task)
-                
-            time_fmt = "%Y-%m-%d %H:%M:%S"
-            for loc, tasks in location_tasks.items():
-                gantt[loc] = []
-                for task in tasks:
-                    name = getattr(task, "name", None)
-                    if not name and hasattr(task, "process"):
-                        name = task.process.name
-                    
-                    start_t = task.start_time
-                    end_t = task.end_time
-                    if start_t == end_t:
-                        import datetime
-                        end_t = start_t + datetime.timedelta(seconds=1)
-                        
-                    gantt[loc].append({
-                        "name": name,
-                        "start": start_t.strftime(time_fmt),
-                        "end": end_t.strftime(time_fmt)
-                    })
-            result["gantt"] = gantt
-            
-        # 5. Graph
+        # 4. Graph
         nodes = []
         edges = []
         
@@ -484,7 +378,7 @@ class Visualizer:
                 "name": proc.original_label,
                 "scale": scale,
                 "cost": proc.cost,
-                "time": proc.time,
+                "time": proc.time * scale,
                 "time_unit": proc.time_unit,
                 "tags": sorted(list(proc.tags)) if proc.tags else [],
                 "tools": [{"name": t.name, "quantity": t.quantity.val, "unit": t.quantity.unit} for t in sorted(proc.tools, key=lambda x: x.name)]
@@ -542,14 +436,13 @@ class Visualizer:
                 })
                 
         query_targets = []
-        for q in self.queries:
-            for qty, res in sorted(q.query, key=lambda item: item[1].name):
-                query_targets.append({
-                    "name": res.name,
-                    "quantity": qty.val,
-                    "unit": qty.unit,
-                    "tags": sorted(list(res.tags - {"basic"})) + [f"!{t}" for t in sorted(res.negated_tags)]
-                })
+        for qty, res in sorted(self.query.query, key=lambda item: item[1].name):
+            query_targets.append({
+                "name": res.name,
+                "quantity": qty.val,
+                "unit": qty.unit,
+                "tags": sorted(list(res.tags - {"basic"})) + [f"!{t}" for t in sorted(res.negated_tags)]
+            })
         nodes.append({
             "id": "Query",
             "type": "query",
@@ -572,7 +465,7 @@ class Visualizer:
                 })
                 
             for qty_out, res_out in proc.out:
-                if any(res_out.name == q_res.name and self._matches_tags(q_res, res_out) for q in self.queries for _, q_res in q.query):
+                if any(res_out.name == q_res.name and self._matches_tags(q_res, res_out) for _, q_res in self.query.query):
                     scaled_qty = qty_out * scale
                     edges.append({
                         "source": proc.name,
@@ -583,11 +476,7 @@ class Visualizer:
                         "tags": sorted(list(res_out.tags - {"basic"})) + [f"!{t}" for t in sorted(res_out.negated_tags)]
                     })
                     
-        all_query_items = []
-        for q in self.queries:
-            all_query_items.extend(q.query)
-            
-        for q_qty, q_res in sorted(all_query_items, key=lambda item: item[1].name):
+        for q_qty, q_res in sorted(self.query.query, key=lambda item: item[1].name):
             source = self._find_source_process(q_res, "Query")
             if q_res.basic or source is None:
                 produced_by_dag = any(

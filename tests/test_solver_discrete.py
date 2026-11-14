@@ -1,8 +1,6 @@
-from typing import cast
-from resource_flow.dag import DAG
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query
-from resource_flow.solvers import Solver
+from resource_flow.solvers.recipe.recipe_solver import RecipeSolver
 
 def test_solver_discrete_batch_scaling_single_process():
     pack = Resource("pack", basic=True, tags={"discrete"})
@@ -16,8 +14,8 @@ def test_solver_discrete_batch_scaling_single_process():
 
     query = Query({(Quantity(1, "piece"), final_a)})
     
-    solver = Solver({process_a}, query)
-    dag = cast('DAG', solver.solve())
+    solver = RecipeSolver({process_a}, query)
+    dag = solver.solve()
     
     # Demand 1.1 should be rounded to 2.0
     assert solver.final_demands["pack"] == Quantity(2.0, "piece")
@@ -45,13 +43,13 @@ def test_solver_discrete_batch_scaling_with_producer():
 
     query = Query({(Quantity(1, "piece"), final)})
     
-    solver = Solver({chicken, cook}, query)
-    dag = cast('DAG', solver.solve())
+    solver = RecipeSolver({chicken, cook}, query)
+    dag = solver.solve()
     
     # Cook demands 1.5 eggs. It should round to 2 eggs.
     # Chicken scales by 2, produces 2 eggs.
     # Surplus is 0.5 eggs.
-    assert dag["chicken"] == 2.0  # type: ignore
+    assert dag["chicken"] == 2.0
     assert solver.final_surplus["egg"] == Quantity(0.5, "piece")
 
 def test_solver_discrete_batch_scaling_with_custom_batch_size():
@@ -70,8 +68,8 @@ def test_solver_discrete_batch_scaling_with_custom_batch_size():
 
     query = Query({(Quantity(1, "piece"), final)})
     
-    solver = Solver({cook}, query, defs=[flour_def])
-    dag = cast('DAG', solver.solve())
+    solver = RecipeSolver({cook}, query, defs=[flour_def])
+    dag = solver.solve()
     
     # Total demand should be 400g because 300g requires 2 batches of 200g
     assert solver.final_demands["Flour"] == Quantity(400.0, "g")

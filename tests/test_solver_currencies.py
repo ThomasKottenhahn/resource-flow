@@ -1,6 +1,6 @@
 import pytest
 from resource_flow.parser import RecipeParser
-from resource_flow.solvers import Solver
+from resource_flow.solvers import RecipeSolver
 
 def test_default_base_currency(tmp_path):
     main_file = tmp_path / "main.rf"

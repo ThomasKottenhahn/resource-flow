@@ -1,7 +1,6 @@
-from resource_flow.models import Resource, BasicResourceDef
 import pytest
 from resource_flow.models import Resource, Quantity, Process, Query, BasicResourceDef, AggregateGoal
-from resource_flow.solvers import BasicRecipeSolver
+from resource_flow.solvers.recipe.recipe_solver import RecipeSolver
 from resource_flow.parser import RecipeParser
 
 def test_solver_branches_on_supplier_combinations():
@@ -29,9 +28,9 @@ def test_solver_branches_on_supplier_combinations():
     )
 
     # Defs contain both basic resources
-    defs: list[BasicResourceDef | Resource] = [flour_expensive, flour_cheap]
+    defs = [flour_expensive, flour_cheap]
 
-    solver = BasicRecipeSolver({process}, query, defs)
+    solver = RecipeSolver({process}, query, defs)
     dag = solver.solve()
 
     assert dag.calculate_metric("cost") == 5.0
@@ -61,7 +60,7 @@ def test_solver_chooses_supplier_from_parser(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = BasicRecipeSolver(ctx.processes, ctx.queries, ctx.defs)
+    solver = RecipeSolver(ctx)
     dag = solver.solve()
     
     # Cost should be 5.00 from the Cheap Farm
@@ -91,7 +90,7 @@ def test_solver_chooses_inline_supplier_cost(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = BasicRecipeSolver(ctx.processes, ctx.queries, ctx.defs)
+    solver = RecipeSolver(ctx)
     dag = solver.solve()
     
     # Cost should be 2.00 from the inline definition

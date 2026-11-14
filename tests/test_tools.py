@@ -1,8 +1,6 @@
-from resource_flow.dag import DAG
-from typing import cast
 import pytest
 from resource_flow.parser import RecipeParser
-from resource_flow.solvers import Solver
+from resource_flow.solvers import RecipeSolver
 
 def test_tool_route_chosen_when_available(tmp_path):
     dsl = """
@@ -18,10 +16,10 @@ def test_tool_route_chosen_when_available(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = Solver(ctx)
-    dag = cast('DAG', solver.solve())
+    solver = RecipeSolver(ctx)
+    dag = solver.solve()
     
-    processes_used = [node.process.name for node in dag.nodes if node.process]  # type: ignore
+    processes_used = [node.process.name for node in dag.nodes if node.process]
     assert "tool_route" in processes_used
     assert "hand_route" not in processes_used
 
@@ -39,10 +37,10 @@ def test_fallback_route_chosen_when_tool_missing(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = Solver(ctx)
-    dag = cast('DAG', solver.solve())
+    solver = RecipeSolver(ctx)
+    dag = solver.solve()
     
-    processes_used = [node.process.name for node in dag.nodes if node.process]  # type: ignore
+    processes_used = [node.process.name for node in dag.nodes if node.process]
     assert "hand_route" in processes_used
     assert "tool_route" not in processes_used
 
@@ -60,10 +58,10 @@ def test_tool_quantity_matching(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = Solver(ctx)
-    dag = cast('DAG', solver.solve())
+    solver = RecipeSolver(ctx)
+    dag = solver.solve()
     
-    processes_used = [node.process.name for node in dag.nodes if node.process]  # type: ignore
+    processes_used = [node.process.name for node in dag.nodes if node.process]
     assert "hand_route" in processes_used
     assert "tool_route" not in processes_used
 
@@ -86,7 +84,7 @@ def test_solver_fallback_reports_minimal_additional_tools(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = Solver(ctx)
+    solver = RecipeSolver(ctx)
 
     # query has no tools available, so both routes fail
     with pytest.raises(ValueError, match="No solution found with available tools. Closest solution requires additional tools: microwave"):
@@ -104,10 +102,10 @@ def test_solver_fallback_reports_minimal_additional_tools(tmp_path):
     recipe_file2.write_text(recipe_with_tool)
 
     ctx2 = parser.parse_file(str(recipe_file2))
-    solver2 = Solver(ctx2)
+    solver2 = RecipeSolver(ctx2)
     # If we provide microwave, Route B works!
-    dag = cast('DAG', solver2.solve())
-    processes_used = [node.process.name for node in dag.nodes if node.process]  # type: ignore
+    dag = solver2.solve()
+    processes_used = [node.process.name for node in dag.nodes if node.process]
     assert "cook_b" in processes_used
 
 def test_shared_tool_across_processes(tmp_path):
@@ -124,9 +122,9 @@ def test_shared_tool_across_processes(tmp_path):
     parser = RecipeParser()
     ctx = parser.parse_file(str(recipe_file))
     
-    solver = Solver(ctx)
-    dag = cast('DAG', solver.solve())
+    solver = RecipeSolver(ctx)
+    dag = solver.solve()
     
-    processes_used = [node.process.name for node in dag.nodes if node.process]  # type: ignore
+    processes_used = [node.process.name for node in dag.nodes if node.process]
     assert "cut" in processes_used
     assert "carve" in processes_used
